@@ -1,7 +1,7 @@
 name: Update stop index
 on:
   schedule:
-    - cron: '30 19 * * 0'   # 每週一 03:30（台灣時間）
+    - cron: '30 19 * * 0'   # Monday 03:30 Taiwan time
   workflow_dispatch:
 permissions:
   contents: write
@@ -20,7 +20,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 只有日期不同不算更新
+          # a date-only difference is not an update
           if git diff --quiet -- stops-data.json; then exit 0; fi
           if [ "$(git show HEAD:stops-data.json | sed 's/^{"v":"[^"]*"//' | md5sum)" = "$(sed 's/^{"v":"[^"]*"//' stops-data.json | md5sum)" ]; then exit 0; fi
           git config user.name "github-actions[bot]"
