@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>交通出門助手</title>
+<meta name="description" content="給長輩的公車小幫手：不用看路線圖，打開只顯示下一班公車還有幾分鐘到。">
+<meta name="theme-color" content="#0A4C9A">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#17191C;--sub:#454A50;--bg:#E8E4D8;--paper:#FFFDF7;--line:#A9A594;--blue:#0A4C9A;--on-blue:#fff;--red:#B3261E;
+  --led:#0D0E0C;--amber:#FFB300;--led-txt:#fff;--go:#3DEB7C;--miss:#FF9C8F;--dot:rgba(255,255,255,.055);--mq:0px}
+:root[data-mode="white"]{--bg:#fff;--paper:#fff;--line:#222;--sub:#222;--led:#fff;--amber:#000;--led-txt:#000;--go:#00602B;--miss:#A3160C;--dot:transparent}
+html{font-size:22px}
+html[data-size="1"]{font-size:26px}
+html[data-size="2"]{font-size:30px}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Noto Sans TC','Microsoft JhengHei','PingFang TC',sans-serif;font-weight:500;line-height:1.5;padding-top:var(--mq);-webkit-text-size-adjust:100%}
+body.has-marquee{--mq:34px}
+button,input{font:inherit;color:inherit}
+a{color:var(--blue);font-weight:700;overflow-wrap:anywhere}
+h1,h2,h3,p{margin:0}
+:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+
+#marqueeBar{position:fixed;top:0;left:0;right:0;height:34px;background:var(--blue);z-index:60;overflow:hidden;display:none;align-items:center}
+#marqueeBar.show{display:flex}
+#marqueeTrack{display:inline-block;white-space:nowrap;padding-left:100%;font-size:16px;font-weight:700;color:var(--on-blue);animation:marquee-scroll 30s linear infinite}
+#marqueeBar:hover #marqueeTrack{animation-play-state:paused}
+@keyframes marquee-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+.top{display:flex;align-items:center;justify-content:space-between;gap:.5rem;max-width:640px;margin:0 auto;padding:.5rem 16px .3rem}
+.top h1{font-size:1.05rem;font-weight:900;letter-spacing:.02em}
+.setbtn{background:none;border:2px solid var(--line);border-radius:.6rem;padding:.2rem .55rem;font-size:.75rem;font-weight:700;min-height:2.2rem;cursor:pointer}
+main{max-width:640px;margin:0 auto;padding:0 16px 1.5rem}
+
+/* 站牌卡片 */
+.sign{margin:.5rem 0 1rem;border-radius:.9rem;overflow:hidden;background:var(--blue);border:3px solid var(--blue);box-shadow:0 .25rem 0 rgba(0,0,0,.18)}
+.sign-top{color:var(--on-blue);padding:.35rem .8rem .4rem;font-size:1.25rem;font-weight:900;line-height:1.3;overflow-wrap:anywhere}
+.led{background-color:var(--led);background-image:radial-gradient(var(--dot) 1px,transparent 1.4px);background-size:7px 7px;color:var(--led-txt);padding:.7rem .8rem .8rem}
+.led-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:.2rem .6rem}
+.rt{font-size:1.9rem;font-weight:900;line-height:1.15;color:var(--amber);overflow-wrap:anywhere}
+.rt.long{font-size:1.3rem}
+.hd{font-size:1rem;font-weight:700;overflow-wrap:anywhere}
+.big{display:flex;align-items:baseline;gap:.35rem;color:var(--amber);font-weight:900;line-height:1;margin:.25rem 0 .35rem}
+.big b{font-size:clamp(5.2rem,30vw,7.2rem);font-weight:900;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.big i{font-style:normal;font-size:1.7rem}
+.big.word b{font-size:min(3.6rem,16vw);letter-spacing:.02em;padding:.35rem 0}
+.hint{font-size:1.15rem;font-weight:900;line-height:1.35}
+.hint.go{color:var(--go)}
+.hint.miss{color:var(--miss)}
+.sign-foot{background:var(--paper);padding:.5rem .7rem .6rem}
+.sign-foot p{font-size:.85rem;color:var(--sub);font-weight:700;margin-bottom:.4rem;overflow-wrap:anywhere}
+.acts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(6.5rem,100%),1fr));gap:.4rem}
+.acts .btn{padding-left:.15rem;padding-right:.15rem}
+.btn{display:flex;align-items:center;justify-content:center;gap:.3rem;width:100%;min-height:3.1rem;padding:.35rem .6rem;border:2px solid var(--blue);border-radius:.7rem;background:var(--paper);color:var(--blue);font-weight:900;font-size:.95rem;line-height:1.25;cursor:pointer;text-decoration:none;text-align:center}
+.btn.main{background:var(--blue);color:var(--on-blue);font-size:1.1rem;min-height:3.5rem}
+.btn.on{background:var(--amber);border-color:var(--ink);color:#000}
+.btn.danger{border-color:var(--red);color:var(--red)}
+.btn[disabled]{opacity:.45;cursor:default}
+.stack>*+*{margin-top:.55rem}
+.upd{text-align:center;font-size:.8rem;color:var(--sub);font-weight:700;margin:.2rem 0 .6rem}
+
+/* 設定流程 */
+.q{font-size:1.4rem;font-weight:900;line-height:1.35;margin:.5rem 0 .2rem}
+.sub{color:var(--sub);font-size:.9rem;margin-bottom:.6rem}
+.step{font-size:.8rem;font-weight:700;color:var(--sub);margin-top:.3rem}
+.search{display:flex;gap:.4rem;margin-bottom:.55rem}
+.search input,.txt{flex:1;min-width:0;width:100%;height:3.1rem;padding:0 .6rem;border:2px solid var(--ink);border-radius:.7rem;background:var(--paper);font-weight:700}
+.search button{flex:none;width:3.1rem;height:3.1rem;border:2px solid var(--blue);border-radius:.7rem;background:var(--paper);font-size:1.1rem;cursor:pointer}
+.res{list-style:none;margin:.5rem 0 0;padding:0}
+.res li+li{margin-top:.4rem}
+.res button{display:block;width:100%;text-align:left;padding:.45rem .7rem;background:var(--paper);border:2px solid var(--line);border-radius:.7rem;cursor:pointer;min-height:3.1rem}
+.res b{display:block;font-size:1.05rem;font-weight:900;line-height:1.3}
+.res small{display:block;font-size:.75rem;color:var(--sub);line-height:1.3}
+.pick{display:flex;align-items:center;gap:.6rem;padding:.45rem .7rem;background:var(--paper);border:2px solid var(--line);border-radius:.7rem;margin-bottom:.4rem;min-height:3.1rem;cursor:pointer}
+.pick input{flex:none;width:1.4rem;height:1.4rem;accent-color:var(--blue)}
+.pick b{font-weight:900;font-size:1.1rem}
+.pick span{font-size:.85rem;color:var(--sub);display:block;line-height:1.3}
+.lab{display:block;font-weight:900;margin:.9rem 0 .3rem}
+.walk{display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem}
+.walk .btn{min-height:2.9rem}
+.walk .btn[aria-pressed="true"]{background:var(--blue);color:var(--on-blue)}
+.linkbtn{background:none;border:none;padding:.5rem 0;color:var(--blue);font-weight:700;text-decoration:underline;cursor:pointer;font-size:.9rem;min-height:2.6rem}
+.note{background:var(--paper);border:2px solid var(--line);border-radius:.7rem;padding:.6rem .7rem;font-size:.95rem}
+.ok-title{font-size:1.5rem;font-weight:900;margin:.8rem 0 .2rem}
+
+/* 常用設定 */
+.set-tools{display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0 .6rem}
+.set-tools .btn{min-height:2.5rem;font-size:.8rem}
+.set-sec{border:2px solid var(--line);border-radius:.7rem;margin-bottom:.5rem;background:var(--paper)}
+.set-sec>summary{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;padding:.6rem .7rem;font-weight:700;min-height:3rem}
+.set-sec>summary::-webkit-details-marker{display:none}
+.set-sec>summary::after{content:'▸';margin-left:.2rem;transition:transform .2s;flex:none}
+.set-sec[open]>summary::after{transform:rotate(90deg)}
+.set-sec .sst{flex:1 1 0;min-width:0}
+.set-sec .ssv{font-weight:500;font-size:.8rem;color:var(--sub);text-align:right}
+.set-body{padding:0 .7rem .7rem}
+.set-body>*+*{margin-top:.45rem}
+.seg{display:flex;flex-wrap:wrap;gap:.35rem}
+.seg .btn{flex:1 1 auto;width:auto;min-height:2.8rem;font-size:.85rem}
+.seg .btn[aria-pressed="true"]{background:var(--blue);color:var(--on-blue)}
+.trip-row{border-top:1px solid var(--line);padding-top:.45rem}
+.trip-row b{display:block;font-weight:900;overflow-wrap:anywhere}
+.trip-row .seg{margin-top:.3rem}
+
+.foot{text-align:center;font-size:.75rem;color:var(--sub);margin-top:1.4rem;line-height:1.7}
+.foot .row{display:flex;flex-wrap:wrap;justify-content:center;gap:.1rem .9rem}
+.foot button,.foot a{background:none;border:none;padding:.3rem 0;font:inherit;font-weight:700;color:var(--blue);text-decoration:underline;cursor:pointer;min-height:2.2rem}
+
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:16px;z-index:80}
+.modal.show{display:flex}
+.box{background:var(--paper);color:var(--ink);border-radius:1rem;max-width:520px;width:100%;max-height:88vh;overflow:auto;padding:1rem}
+.box h2{font-size:1.25rem;font-weight:900;margin-bottom:.4rem}
+.box ul{margin:.3rem 0 .8rem;padding-left:1.2em}
+.box li{margin:.3rem 0}
+#ring .box{background:#0D0E0C;color:#fff;text-align:center;border:4px solid #FFB300}
+#ring h2{color:#FFB300;font-size:2rem}
+#ring p{font-size:1.2rem;font-weight:900;margin-bottom:.8rem}
+#toast{position:fixed;left:16px;right:16px;bottom:1.2rem;margin:0 auto;max-width:520px;background:#17191C;color:#fff;font-weight:700;padding:.6rem .8rem;border-radius:.7rem;text-align:center;z-index:90;opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){#marqueeTrack{animation-duration:90s!important}.set-sec>summary::after{transition:none}}
+@media print{#marqueeBar,.acts,.foot{display:none}}
+</style>
+</head>
+<body>
+<div id="marqueeBar"><div id="marqueeTrack"></div></div>
+<div class="top">
+  <h1>🚏 交通出門助手</h1>
+  <button class="setbtn" type="button" id="setBtn">⚙ 常用設定</button>
+</div>
+<main id="view"></main>
+
+<div class="modal" id="about" role="dialog" aria-modal="true" aria-labelledby="aboutT">
+  <div class="box">
+    <h2 id="aboutT">⚠ 使用前請看</h2>
+    <ul>
+      <li>到站時間是公車資料<b>估計</b>的，塞車時會變動，也可能提早到。請提早一點到站牌。</li>
+      <li>上車前請看清楚<b>車號和方向</b>。</li>
+      <li>不要為了趕車奔跑，過馬路請注意安全。錯過了就等下一班。</li>
+      <li>目前只有<b>台北市、新北市</b>的公車。資料來自兩市政府開放資料，這個工具不是官方服務。</li>
+      <li>您常去的地方只存在這支手機。用「我的位置」找站牌時，位置不會傳出去。</li>
+    </ul>
+    <button class="btn main" type="button" id="aboutOk">我知道了</button>
+  </div>
+</div>
+<div class="modal" id="ring" role="alertdialog" aria-modal="true" aria-labelledby="ringT">
+  <div class="box">
+    <h2 id="ringT">該出門了！</h2>
+    <p id="ringM"></p>
+    <button class="btn main" type="button" id="ringOk">知道了</button>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+'use strict';
+var PREFIX = 'nbh.', TRIPS_KEY = PREFIX + 'trips', SET_KEY = PREFIX + 'settings', FOLD_KEY = PREFIX + 'fold', WARN_KEY = PREFIX + 'warnSeen';
+var ETA_URL = 'https://next-bus-eta.content-workflow.workers.dev/eta';
+var BADGE = 'https://visitor-badge.laobi.icu/badge?page_id=m255525.nextbushelper';
+var POLL = 30000, KEEP = 90000, MAX_BUS = 12;
+var $ = function(id){ return document.getElementById(id); };
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
+function toast(m){ var t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(function(){ t.classList.remove('show'); }, 3200); }
+
+var trips = []; try{ trips = JSON.parse(lsGet(TRIPS_KEY) || '[]') || []; }catch(e){ trips = []; }
+var S = {size:0, mode:'led', rate:.85}; try{ Object.assign(S, JSON.parse(lsGet(SET_KEY) || '{}')); }catch(e){}
+function saveTrips(){ lsSet(TRIPS_KEY, JSON.stringify(trips)); }
+function saveSet(){ lsSet(SET_KEY, JSON.stringify(S)); applySet(); }
+function applySet(){ document.documentElement.dataset.size = S.size; document.documentElement.dataset.mode = S.mode; }
+
+/* ---------- 站牌索引（只有設定時才下載） ---------- */
+var IDX = null, idxLoading = null;
+function norm(s){ return String(s || '').replace(/臺/g, '台').replace(/[\s　]/g, '').toLowerCase(); }
+function baseOf(k){ return k.replace(/[(（].*$/, '') || k; }
+function plainName(n){ return String(n).replace(/[(（].*$/, '') || n; }
+/* 臺北車站(忠孝)、(重慶)…是同一地方的不同站位：上車要分開選，下車當同一個地方 */
+function sameSpot(c){ return IDX.byBase[c.base].filter(function(x){ return dist(c.lat, c.lon, x.lat, x.lon) < 1000; }).map(function(x){ return x.i; }); }
+/* 對向站牌常常叫別的名字，找不到同名站時放寬到附近 */
+function nearSpots(list, m){ var o = {}; list.forEach(function(i){ var c = IDX.cl[i]; IDX.cl.forEach(function(x){ if(dist(c.lat, c.lon, x.lat, x.lon) < m) o[x.i] = 1; }); }); return Object.keys(o).map(Number); }
+function dist(a, b, c, d){ var x = (d - b) * 101000, y = (c - a) * 111000; return Math.sqrt(x * x + y * y); }
+function loadIndex(){
+  if(IDX) return Promise.resolve(IDX);
+  if(idxLoading) return idxLoading;
+  idxLoading = fetch('stops-data.json').then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(d){
+    var byName = {}, byBase = {}, cl = [], of = new Int32Array(d.p.length);
+    d.p.forEach(function(p, i){
+      var k = norm(p[0]), list = byName[k] || (byName[k] = []), hit = null;
+      for(var j = 0; j < list.length; j++){ if(dist(list[j].lat, list[j].lon, p[1], p[2]) < 600){ hit = list[j]; break; } }
+      if(!hit){ hit = {i:cl.length, name:p[0], key:k, base:baseOf(k), lat:p[1], lon:p[2], addr:p[3]}; cl.push(hit); list.push(hit); (byBase[hit.base] = byBase[hit.base] || []).push(hit); }
+      of[i] = hit.i;
+    });
+    IDX = {cl:cl, of:of, r:d.r, v:d.v, byBase:byBase}; return IDX;
+  }).catch(function(e){ idxLoading = null; throw e; });
+  return idxLoading;
+}
+function search(q){
+  var k = norm(q); if(!k) return [];
+  var out = [];
+  IDX.cl.forEach(function(c){ var i = c.key.indexOf(k); if(i < 0) return; out.push({c:c, s:(c.key === k ? 0 : i === 0 ? 1 : 2) * 100 + c.key.length}); });
+  out.sort(function(a, b){ return a.s - b.s; });
+  return out.slice(0, 20).map(function(x){ return x.c; });
+}
+function nearby(lat, lon){
+  var out = [];
+  IDX.cl.forEach(function(c){ var m = dist(lat, lon, c.lat, c.lon); if(m < 1200) out.push({c:c, m:m}); });
+  out.sort(function(a, b){ return a.m - b.m; });
+  return out.slice(0, 12);
+}
+/* 從 A 到 B 的直達車；b 是站位編號陣列，省略＝這站看得到的所有路線 */
+function findBuses(a, b){
+  var seen = {}, res = [], bs = null;
+  if(b != null){ bs = {}; b.forEach(function(i){ bs[i] = 1; }); }
+  IDX.r.forEach(function(r){
+    var p = r[3], last = -1, stops = 0, at = -1;
+    for(var k = 0; k < p.length; k++){
+      var c = IDX.of[p[k]];
+      if(b == null){ if(c === a && k < p.length - 1){ at = k; stops = p.length - 1 - k; break; } }
+      else if(c === a){ last = k; }
+      else if(bs[c] && last >= 0){ at = last; stops = k - last; break; }
+    }
+    if(at < 0) return;
+    var key = r[0] + '|' + r[1], x = {r:r[0], h:r[1], c:r[2], s:r[4][at], stops:stops};
+    if(!seen[key] || stops < seen[key].stops){ if(seen[key]) res.splice(res.indexOf(seen[key]), 1); seen[key] = x; res.push(x); }
+  });
+  res.sort(function(x, y){ return b == null ? String(x.r).localeCompare(String(y.r), 'zh-Hant', {numeric:true}) : x.stops - y.stops; });
+  return res;
+}
+
+/* ---------- 到站時間 ---------- */
+var etas = {}, etaAt = 0, tpAt = null, pollT = null, fetching = false, down = {};
+function chunk(list, n){ var o = []; for(var i = 0; i < list.length; i += n) o.push(list.slice(i, i + n)); return o; }
+function poll(){
+  clearTimeout(pollT);
+  if(currentView() !== 'home' || document.hidden || !trips.length) return Promise.resolve();
+  pollT = setTimeout(poll, POLL);
+  if(fetching) return Promise.resolve();
+  var seen = {}, all = [];
+  trips.forEach(function(t){ t.b.forEach(function(b){ var k = b.c + b.s; if(!seen[k]){ seen[k] = 1; all.push(b); } }); });
+  fetching = true;
+  return Promise.all(chunk(all, 30).map(function(g){
+    var q = {t:[], n:[]}; g.forEach(function(b){ q[b.c].push(b.s); });
+    var u = ETA_URL + '?' + ['t', 'n'].filter(function(c){ return q[c].length; }).map(function(c){ return c + '=' + q[c].join(','); }).join('&');
+    return fetch(u).then(function(r){ return r.json(); });
+  })).then(function(rs){
+    var e = {}, bad = false, dn = {};
+    rs.forEach(function(d){ if(!d.ok) bad = true; Object.assign(e, d.r || {}); if(d.tpAt) tpAt = d.tpAt; (d.miss || []).forEach(function(c){ dn[c] = 1; }); });
+    if(!bad || Object.keys(e).length){ etas = e; etaAt = Date.now(); down = dn; }
+  }).catch(function(){}).then(function(){ fetching = false; drawCards(); checkAlarm(); });
+}
+function fresh(){ return etaAt && Date.now() - etaAt < KEEP; }
+/* 算出一趟要顯示什麼。回傳 {bus, sec, code, hint, cls, say} */
+function judge(t){
+  var walk = (t.walk || 0) * 60;
+  if(!fresh()) return {none:true, word:etaAt ? '暫時查不到' : '查詢中…', hint:etaAt ? '請看站牌，或等一下再看' : '', cls:''};
+  var run = [], codes = [];
+  t.b.forEach(function(b){ var v = etas[b.s]; if(v == null) return; if(v >= 0) run.push({b:b, v:v}); else codes.push(v); });
+  run.sort(function(x, y){ return x.v - y.v; });
+  if(!run.length){
+    if(!codes.length){
+      var srcDown = t.b.some(function(b){ return down[b.c]; });
+      return {none:true, word:'暫時查不到', hint:srcDown ? '請看站牌，或等一下再看' : '站牌資料可能換了，請家人重新設定這一趟', cls:'miss'};
+    }
+    var w = codes.indexOf(-1) >= 0 ? ['還沒發車', '車還在總站，時間未定'] : codes.indexOf(-2) >= 0 ? ['今天不停這站', '交通管制，請看站牌公告'] : codes.indexOf(-4) >= 0 ? ['今天沒開車', '請改搭別的車'] : ['今天沒車了', '末班車已經過了'];
+    return {none:true, word:w[0], hint:w[1], cls:w[0] === '還沒發車' ? '' : 'miss'};
+  }
+  var hit = null; for(var i = 0; i < run.length; i++){ if(run[i].v >= walk){ hit = run[i]; break; } }
+  var x = hit || run[0], o = {bus:x.b, sec:x.v, catchable:!!hit, cls:''};
+  var min = Math.max(1, Math.round(x.v / 60)); o.min = x.v <= 60 ? 0 : min;
+  if(!walk){
+    o.hint = x.v <= 60 ? '請準備上車，看清楚車號' : x.v <= 300 ? '快來了，在站牌等' : '還要等一下，可以先坐著';
+    o.cls = x.v <= 300 ? 'go' : '';
+  } else if(!hit){
+    o.hint = '這班趕不上了，不用跑，等下一班'; o.cls = 'miss';
+  } else {
+    var leave = Math.floor((x.v - walk) / 60);
+    if(leave <= 1){ o.hint = '現在出門剛好'; o.cls = 'go'; }
+    else o.hint = '還不用急，再 ' + leave + ' 分鐘出門';
+  }
+  return o;
+}
+function sayRoute(r){ return String(r).replace(/\d/g, function(d){ return '零一二三四五六七八九'[+d]; }); }
+function sayTrip(t){
+  var j = judge(t);
+  if(j.none) return t.name + '。' + j.word + '。' + j.hint;
+  return t.name + '。' + sayRoute(j.bus.r) + '路，' + (j.min ? j.min + '分鐘後到' : '快到了') + '。' + j.hint;
+}
+function speak(text){
+  if(!('speechSynthesis' in window)){ toast('這支手機不支援朗讀'); return; }
+  speechSynthesis.cancel();
+  var u = new SpeechSynthesisUtterance(text); u.lang = 'zh-TW'; u.rate = +S.rate || .85;
+  speechSynthesis.speak(u);
+}
+
+/* ---------- 時間到叫我 ---------- */
+var alarmId = null, wake = null, actx = null;
+function keepAwake(on){
+  if(on && navigator.wakeLock){ navigator.wakeLock.request('screen').then(function(w){ wake = w; }).catch(function(){}); }
+  else if(!on && wake){ wake.release().catch(function(){}); wake = null; }
+}
+function beep(){
+  try{
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    [0, .45, .9].forEach(function(s){ var o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = 880; g.gain.value = .25; o.connect(g); g.connect(actx.destination); o.start(actx.currentTime + s); o.stop(actx.currentTime + s + .3); });
+  }catch(e){}
+}
+function setAlarm(id){
+  alarmId = id; keepAwake(!!id);
+  if(id){ try{ actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); }catch(e){} speak('好，時間到我會叫您。請不要關掉畫面。'); }
+  drawCards();
+}
+function checkAlarm(){
+  if(!alarmId) return;
+  var t = trips.filter(function(x){ return x.id === alarmId; })[0]; if(!t){ setAlarm(null); return; }
+  var j = judge(t); if(j.none || !j.catchable) return;
+  var left = j.sec - (t.walk || 0) * 60;
+  if(left > (t.walk ? 60 : 180)) return;
+  var m = sayRoute(j.bus.r) + '路' + (j.min ? '再' + j.min + '分鐘到' : '快到了');
+  $('ringT').textContent = t.walk ? '該出門了！' : '車快到了！';
+  $('ringM').textContent = j.bus.r + ' ' + (j.min ? '再 ' + j.min + ' 分鐘到' : '快到了');
+  $('ring').classList.add('show');
+  alarmId = null; keepAwake(false); beep(); if(navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]);
+  setTimeout(function(){ speak($('ringT').textContent + m); }, 1300);
+  drawCards();
+}
+
+/* ---------- 畫面切換 ---------- */
+var F = {};   // 設定流程暫存
+function currentView(){ var h = location.hash.slice(1); if(h.indexOf('add=') === 0) return 'add'; return h || 'home'; }
+function go(v){ if(currentView() === v) render(); else location.hash = v; }
+function render(){
+  var v = currentView();
+  clearTimeout(pollT);
+  if((v === 'to' || v === 'ok' || v === 'done') && !F.a && v !== 'done'){ location.replace('#from'); return; }
+  ({home:vHome, from:vFrom, to:vTo, ok:vOk, done:vDone, settings:vSettings, add:vAdd}[v] || vHome)();
+  bindCommon(); window.scrollTo(0, 0);
+}
+function foot(){
+  return '<div class="foot"><div>👤 創作者 Mark Tsai（蔡豐全）　<a href="mailto:tsaimark@gmail.com">tsaimark@gmail.com</a></div>' +
+    '<div class="row"><a href="manual.html" target="_blank" rel="noopener">📖 操作手冊</a><button type="button" data-warn>⚠ 使用警語</button><button type="button" data-install>📲 加入主畫面</button></div>' +
+    '<div>訪客數 <img src="' + BADGE + '" alt="訪客次數" height="20" loading="lazy" style="vertical-align:middle"></div></div>';
+}
+function bindCommon(){
+  document.querySelectorAll('[data-warn]').forEach(function(b){ b.onclick = function(){ $('about').classList.add('show'); }; });
+  bindInstall();
+}
+
+/* ---------- 首頁：只顯示下一班 ---------- */
+function vHome(){
+  if(!trips.length){
+    $('view').innerHTML = '<article class="sign"><div class="sign-top">下一班公車</div><div class="led"><div class="big word"><b>幾分鐘到？</b></div><p class="hint">告訴我在哪上車、要去哪裡，以後打開就看得到。</p></div></article>' +
+      '<div class="stack"><button class="btn main" type="button" id="start">開始設定</button><button class="btn" type="button" id="demo">先看一個範例</button></div>' + foot();
+    $('start').onclick = function(){ F = {}; go('from'); };
+    $('demo').onclick = demo;
+    return;
+  }
+  $('view').innerHTML = '<div id="cards"></div><p class="upd" id="upd"></p><div class="stack"><button class="btn" type="button" id="again">🔄 再看一次</button><button class="btn" type="button" id="more">＋ 再加一個常去的地方</button></div>' + foot();
+  $('again').onclick = function(){ toast('查詢中…'); poll(); };
+  $('more').onclick = function(){ F = {}; go('from'); };
+  $('cards').addEventListener('click', function(e){
+    var b = e.target.closest('button'); if(!b) return;
+    var t = trips.filter(function(x){ return x.id === b.dataset.id; })[0]; if(!t) return;
+    if(b.dataset.a === 'say') speak(sayTrip(t));
+    if(b.dataset.a === 'alarm') setAlarm(alarmId === t.id ? null : t.id);
+  });
+  drawCards(); poll();
+}
+function drawCards(){
+  var box = $('cards'); if(!box) return;
+  box.innerHTML = trips.map(function(t){
+    var j = judge(t), line, big;
+    if(j.none){ line = ''; big = '<div class="big word"><b>' + esc(j.word) + '</b></div>'; }
+    else {
+      line = '<div class="led-line"><span class="rt' + (String(j.bus.r).length > 6 ? ' long' : '') + '">' + esc(j.bus.r) + '</span><span class="hd">往 ' + esc(j.bus.h) + '</span></div>';
+      big = j.min ? '<div class="big"><b>' + j.min + '</b><i>分鐘</i></div>' : '<div class="big word"><b>快到了</b></div>';
+    }
+    var on = alarmId === t.id;
+    return '<article class="sign"><h2 class="sign-top">' + esc(t.name) + '</h2><div class="led">' + line + big + (j.hint ? '<p class="hint ' + j.cls + '">' + esc(j.hint) + '</p>' : '') + '</div>' +
+      '<div class="sign-foot"><p>在「' + esc(t.from) + '」上車' + (t.walk ? '・走路 ' + t.walk + ' 分鐘' : '') + '</p><div class="acts">' +
+      '<button class="btn" type="button" data-a="say" data-id="' + esc(t.id) + '">🔊 唸給我聽</button>' +
+      '<button class="btn' + (on ? ' on' : '') + '" type="button" data-a="alarm" data-id="' + esc(t.id) + '" aria-pressed="' + on + '">' + (on ? '🔔 等您出門中（按一下取消）' : '🔔 時間到叫我') + '</button></div></div></article>';
+  }).join('');
+  drawUpd();
+}
+function drawUpd(){
+  var u = $('upd'); if(!u) return;
+  if(!etaAt){ u.textContent = ''; return; }
+  var s = Math.round((Date.now() - etaAt) / 1000), m = s < 10 ? '剛剛更新' : s < 60 ? s + ' 秒前更新' : Math.floor(s / 60) + ' 分鐘前更新';
+  var old = false; if(tpAt){ var d = new Date(tpAt.replace(/\//g, '-').replace(' ', 'T') + '+08:00'); old = Date.now() - d.getTime() > 300000; }
+  u.textContent = m + '・每 30 秒自動更新' + (old ? '・資料來源可能延遲' : '');
+}
+setInterval(function(){ if(currentView() === 'home'){ drawUpd(); if(etaAt && !fresh()) drawCards(); } }, 5000);
+document.addEventListener('visibilitychange', function(){ if(!document.hidden && currentView() === 'home') poll(); });
+
+function demo(){
+  toast('準備範例中…');
+  loadIndex().then(function(){
+    var b = search('榮總')[0], a = null, list = [];
+    if(b) search('石牌').forEach(function(c){ var x = findBuses(c.i, sameSpot(b)); if(x.length > list.length){ list = x; a = c; } });
+    if(!list.length){ toast('範例暫時無法使用，請按「開始設定」'); return; }
+    trips.push({id:newId(), name:'範例：去 ' + b.name, from:a.name, to:b.name, walk:5, b:list.slice(0, 4).map(slim)});
+    saveTrips(); render();
+  }).catch(function(){ toast('連不上網路，請稍後再試'); });
+}
+function newId(){ return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function slim(x){ return {r:x.r, h:x.h, c:x.c, s:x.s}; }
+
+/* ---------- 設定流程 ---------- */
+function picker(opts){
+  $('view').innerHTML = '<button class="linkbtn" type="button" id="back">← 上一步</button><p class="step">' + opts.step + '</p><h2 class="q">' + opts.q + '</h2><p class="sub">' + opts.sub + '</p>' +
+    '<div class="search"><input id="q" type="search" enterkeyhint="search" autocomplete="off" aria-label="站名" placeholder="' + opts.ph + '"><button type="button" id="mic" aria-label="用說的">🎤</button></div>' +
+    (opts.gps ? '<button class="btn" type="button" id="gps">📍 找我附近的站牌</button>' : '') + (opts.extra || '') + '<ul class="res" id="res"></ul>';
+  $('back').onclick = function(){ history.back(); };
+  var q = $('q'), res = $('res'), timer = null;
+  function show(list){
+    if(opts.merge){ var got = {}; list = list.filter(function(c){ var k = sameSpot(c)[0]; if(got[k]) return false; got[k] = 1; return true; }); }
+    if(!list.length){ res.innerHTML = q.value.trim() ? '<li class="note">找不到這個站。換個短一點的說法試試，例如只打「榮總」。</li>' : ''; return; }
+    res.innerHTML = list.map(function(x){ var c = x.c || x; return '<li><button type="button" data-i="' + c.i + '"><b>' + esc(opts.merge ? plainName(c.name) : c.name) + '</b><small>' + (x.m != null ? '約 ' + (Math.round(x.m / 50) * 50) + ' 公尺・' : '') + esc(c.addr || '') + '</small></button></li>'; }).join('');
+  }
+  function run(){ loadIndex().then(function(){ show(search(q.value)); }).catch(function(){ res.innerHTML = '<li class="note">資料載入失敗，請確認網路後再試一次。</li>'; }); }
+  q.addEventListener('input', function(){ clearTimeout(timer); timer = setTimeout(run, 200); });
+  res.addEventListener('click', function(e){ var b = e.target.closest('button'); if(b) opts.pick(IDX.cl[+b.dataset.i]); });
+  loadIndex().catch(function(){});
+  var R = window.SpeechRecognition || window.webkitSpeechRecognition, mic = $('mic');
+  if(!R){ mic.style.display = 'none'; }
+  else mic.onclick = function(){
+    var r = new R(); r.lang = 'zh-TW'; r.interimResults = false; toast('請說站名…');
+    r.onresult = function(e){ q.value = e.results[0][0].transcript.replace(/[。，\s]/g, ''); run(); };
+    r.onerror = function(){ toast('沒有聽清楚，請再按一次，或用打字的'); };
+    try{ r.start(); }catch(e){}
+  };
+  if(opts.gps) $('gps').onclick = function(){
+    if(!navigator.geolocation){ toast('這支手機不能定位，請打站名'); return; }
+    toast('正在找您的位置…');
+    navigator.geolocation.getCurrentPosition(function(p){
+      loadIndex().then(function(){
+        var l = nearby(p.coords.latitude, p.coords.longitude);
+        if(!l.length){ res.innerHTML = '<li class="note">附近找不到站牌。目前只有台北市、新北市的公車，請打站名試試。</li>'; return; }
+        show(l);
+      });
+    }, function(){ toast('拿不到位置，請打站名'); }, {timeout:12000, maximumAge:60000});
+  };
+  return q;
+}
+function vFrom(){
+  picker({step:'第 1 步，共 3 步', q:'您在哪一站上車？', sub:'打站名，或按 🎤 用說的。', ph:'例如：石牌', gps:true, pick:function(c){ F = {a:c}; go('to'); }});
+}
+function vTo(){
+  picker({step:'第 2 步，共 3 步', q:'您要去哪裡？', sub:'從「' + esc(F.a.name) + '」出發。我會幫您找直達的車。', ph:'例如：榮總', merge:true,
+    extra:'<button class="linkbtn" type="button" id="any">不用選目的地，我知道要搭哪一路</button>',
+    pick:function(c){
+      var set = sameSpot(c);
+      if(set.indexOf(F.a.i) >= 0){ toast('上車和下車是同一站，請換一站'); return; }
+      F.b = {name:plainName(c.name), set:set}; F.list = findBuses(F.a.i, set); F.near = false;
+      if(!F.list.length){ F.list = findBuses(F.a.i, nearSpots(set, 500)); F.near = F.list.length > 0; }
+      F.walk = F.walk || 0; go('ok');
+    }});
+  $('any').onclick = function(){ loadIndex().then(function(){ F.b = null; F.list = findBuses(F.a.i, null); F.walk = F.walk || 0; go('ok'); }); };
+}
+function vOk(){
+  var L = F.list || [], any = !F.b;
+  if(!L.length){
+    /* 這一站沒有，就找走得到的附近站牌 */
+    var alts = [], wide = false;
+    if(F.b){
+      [F.b.set, nearSpots(F.b.set, 500)].some(function(dest, n){
+        nearSpots([F.a.i], 500).forEach(function(i){ if(i === F.a.i) return; var x = findBuses(i, dest); if(x.length) alts.push({c:IDX.cl[i], l:x, m:dist(F.a.lat, F.a.lon, IDX.cl[i].lat, IDX.cl[i].lon)}); });
+        wide = n === 1; return alts.length > 0;
+      });
+      alts.sort(function(x, y){ return y.l.length - x.l.length || x.m - y.m; }); alts = alts.slice(0, 3);
+    }
+    $('view').innerHTML = '<button class="linkbtn" type="button" id="back">← 上一步</button><h2 class="q">這一站沒有直達的車</h2><p class="sub">從「' + esc(F.a.name) + '」到「' + esc(F.b ? F.b.name : '') + '」不換車到不了。' + (alts.length ? '走到附近這些站就有直達車：' : '可以換一站試試，或請家人幫忙查。') + '</p>' +
+      (alts.length ? '<ul class="res" id="alts">' + alts.map(function(x, i){ return '<li><button type="button" data-i="' + i + '"><b>改到「' + esc(x.c.name) + '」上車</b><small>走路約 ' + (Math.round(x.m / 50) * 50) + ' 公尺・有 ' + x.l.length + ' 路車</small></button></li>'; }).join('') + '</ul>' : '') +
+      '<button class="btn" type="button" id="redo" style="margin-top:.6rem">換一站</button>';
+    $('back').onclick = $('redo').onclick = function(){ history.back(); };
+    if(alts.length) $('alts').onclick = function(e){ var b = e.target.closest('button'); if(!b) return; var x = alts[+b.dataset.i]; F.a = x.c; F.list = x.l; F.near = wide; render(); };
+    return;
+  }
+  var cap = any ? 0 : L[0].stops * 1.6 + 3;
+  var chk = 0, rows = L.map(function(x, i){
+    var on = !any && x.stops <= cap && chk < 8; if(on) chk++;
+    return '<label class="pick"><input type="checkbox" data-i="' + i + '"' + (on ? ' checked' : '') + '><div><b>' + esc(x.r) + '</b><span>往 ' + esc(x.h) + (any ? '' : '・坐 ' + x.stops + ' 站') + '</span></div></label>';
+  }).join('');
+  var nm = F.name || (F.b ? '去 ' + F.b.name : F.a.name + ' 等車');
+  $('view').innerHTML = '<button class="linkbtn" type="button" id="back">← 上一步</button><p class="step">第 3 步，共 3 步</p><h2 class="q">' + (any ? '您要搭哪一路？' : '這些車可以直達') + '</h2><p class="sub">' + (any ? '請勾選。同一路有兩個方向時，選您要去的那一邊。' : F.near ? '這些車不停「' + esc(F.b.name) + '」，但會停在附近 500 公尺內。下車站請問司機或家人。' : '已幫您勾好。哪一班先到，就顯示哪一班。') + '</p>' + rows +
+    '<label class="lab" for="nm">幫這一趟取個名字</label><input class="txt" id="nm" maxlength="20" value="' + esc(nm) + '">' +
+    '<span class="lab">從出門走到站牌要幾分鐘？</span><div class="walk" id="walk">' + [[0, '已在站牌'], [3, '3 分鐘'], [5, '5 分鐘'], [8, '8 分鐘'], [10, '10 分鐘'], [15, '15 分鐘']].map(function(w){ return '<button class="btn" type="button" data-w="' + w[0] + '" aria-pressed="' + (w[0] === F.walk) + '">' + w[1] + '</button>'; }).join('') + '</div>' +
+    '<button class="btn main" type="button" id="save" style="margin-top:1rem">完成</button>';
+  $('back').onclick = function(){ history.back(); };
+  $('walk').onclick = function(e){ var b = e.target.closest('button'); if(!b) return; F.walk = +b.dataset.w; this.querySelectorAll('button').forEach(function(x){ x.setAttribute('aria-pressed', x === b); }); };
+  $('save').onclick = function(){
+    var b = []; document.querySelectorAll('.pick input:checked').forEach(function(c){ b.push(slim(L[+c.dataset.i])); });
+    if(!b.length){ toast('請至少勾一路車'); return; }
+    if(b.length > MAX_BUS){ toast('最多勾 ' + MAX_BUS + ' 路車'); return; }
+    var t = {id:newId(), name:$('nm').value.trim() || nm, from:F.a.name, to:F.b ? F.b.name : '', walk:F.walk || 0, b:b};
+    trips.push(t); saveTrips(); F.saved = t; location.replace('#done');
+  };
+}
+function vDone(){
+  var t = F.saved; if(!t){ location.replace('#home'); return; }
+  var canBack = F.b && !F.backDone;
+  $('view').innerHTML = '<p class="ok-title">設好了 ✓</p><p class="sub">「' + esc(t.name) + '」以後打開就看得到。</p><div class="stack">' +
+    '<button class="btn main" type="button" id="see">看下一班車</button>' +
+    (canBack ? '<button class="btn" type="button" id="ret">也加回程（' + esc(F.b.name) + ' → ' + esc(plainName(F.a.name)) + '）</button>' : '') +
+    '<button class="btn" type="button" id="send">💬 用 LINE 傳到長輩的手機</button></div>';
+  $('see').onclick = function(){ F = {}; location.replace('#home'); };
+  if(canBack) $('ret').onclick = function(){
+    var home = sameSpot(F.a), L = [], at = null;
+    function tryFrom(list, to){ list.forEach(function(i){ var x = findBuses(i, to); if(x.length > L.length){ L = x; at = IDX.cl[i]; } }); }
+    tryFrom(F.b.set, home);
+    if(!L.length) tryFrom(nearSpots(F.b.set, 500), nearSpots(home, 500));
+    if(!L.length){ toast('回程沒有直達的車，請請家人幫忙查'); return; }
+    var r = {id:newId(), name:'回 ' + plainName(F.a.name), from:at.name, to:F.a.name, walk:0, b:L.slice(0, 8).map(slim)};
+    trips.push(r); saveTrips(); F.backDone = true; F.back = r; toast('已加入回程，在「' + at.name + '」上車'); render();
+  };
+  $('send').onclick = function(){ shareTrips(F.back ? [t, F.back] : [t]); };
+}
+
+/* ---------- 傳給家人 ---------- */
+function b64e(s){ return btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+function b64d(s){ return decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/')))); }
+function shareUrl(list){
+  var p = list.map(function(t){ return [t.name, t.from, t.to, t.walk, t.b.map(function(b){ return [b.r, b.h, b.c, b.s]; })]; });
+  return location.origin + location.pathname + '?openExternalBrowser=1#add=' + b64e(JSON.stringify(p));
+}
+function shareTrips(list){
+  var url = shareUrl(list), text = '我幫您設好公車了，按這個連結，再按「加入」：\n' + url;
+  window.open('https://line.me/R/share?text=' + encodeURIComponent(text), '_blank', 'noopener');
+}
+function parseAdd(){
+  try{
+    var a = JSON.parse(b64d(location.hash.slice(5)));
+    return a.slice(0, 20).map(function(x){
+      var b = (x[4] || []).slice(0, MAX_BUS).map(function(y){ return {r:String(y[0]).slice(0, 30), h:String(y[1]).slice(0, 40), c:y[2] === 'n' ? 'n' : 't', s:parseInt(y[3], 10)}; }).filter(function(y){ return y.s > 0; });
+      return {id:newId(), name:String(x[0]).slice(0, 20), from:String(x[1]).slice(0, 40), to:String(x[2] || '').slice(0, 40), walk:Math.min(60, Math.max(0, parseInt(x[3], 10) || 0)), b:b};
+    }).filter(function(t){ return t.b.length; });
+  }catch(e){ return []; }
+}
+function vAdd(){
+  var l = parseAdd();
+  if(!l.length){ $('view').innerHTML = '<h2 class="q">這個連結打不開</h2><p class="sub">請家人重新傳一次。</p><a class="btn main" href="#home">回首頁</a>'; return; }
+  $('view').innerHTML = '<h2 class="q">家人幫您設好了</h2><p class="sub">按「加入」就可以用了。</p>' + l.map(function(t){ return '<div class="note" style="margin-bottom:.4rem"><b>' + esc(t.name) + '</b><br>在「' + esc(t.from) + '」上車</div>'; }).join('') + '<button class="btn main" type="button" id="yes" style="margin-top:.6rem">加入</button><a class="btn" href="#home" style="margin-top:.5rem">不要</a>';
+  $('yes').onclick = function(){
+    l.forEach(function(t){ var dup = trips.some(function(x){ return x.name === t.name && x.from === t.from; }); if(!dup) trips.push(t); });
+    saveTrips(); location.replace('#home'); toast('加好了');
+  };
+}
+
+/* ---------- 常用設定 ---------- */
+function vSettings(){
+  function sec(id, title, val, body){ return '<details class="set-sec" data-sec="' + id + '"><summary><span class="sst">' + title + '</span><span class="ssv">' + esc(val) + '</span></summary><div class="set-body">' + body + '</div></details>'; }
+  function seg(key, opts){ return '<div class="seg" data-k="' + key + '">' + opts.map(function(o){ return '<button class="btn" type="button" data-v="' + o[0] + '" aria-pressed="' + (String(S[key]) === String(o[0])) + '">' + o[1] + '</button>'; }).join('') + '</div>'; }
+  var SIZES = [[0, '大'], [1, '特大'], [2, '超大']], MODES = [['led', '站牌黑底'], ['white', '白底黑字']], RATES = [[.7, '慢'], [.85, '普通'], [1, '快']];
+  function nameOf(l, v){ return (l.filter(function(o){ return String(o[0]) === String(v); })[0] || ['', ''])[1]; }
+  var rows = trips.map(function(t, i){
+    return '<div class="trip-row"><b>' + esc(t.name) + '</b><div class="seg"><button class="btn" type="button" data-t="up" data-i="' + i + '"' + (i ? '' : ' disabled') + '>上移</button><button class="btn" type="button" data-t="rn" data-i="' + i + '">改名</button><button class="btn danger" type="button" data-t="del" data-i="' + i + '">刪除</button></div></div>';
+  }).join('') || '<p>還沒有設定。</p>';
+  $('view').innerHTML = '<button class="linkbtn" type="button" id="back">← 回到公車</button><h2 class="q">⚙ 常用設定</h2>' +
+    '<div class="set-tools"><button class="btn" type="button" id="exAll">全部展開</button><button class="btn" type="button" id="coAll">全部收合</button></div>' +
+    sec('size', '字體大小', nameOf(SIZES, S.size), seg('size', SIZES)) +
+    sec('mode', '畫面顏色', nameOf(MODES, S.mode), seg('mode', MODES)) +
+    sec('rate', '朗讀速度', nameOf(RATES, S.rate), seg('rate', RATES)) +
+    sec('trips', '我常去的地方', trips.length + ' 個', rows + '<button class="btn" type="button" id="addT">＋ 新增</button>') +
+    sec('send', '傳給家人', '', '<p>把這裡設好的地方全部傳到另一支手機。家人可以先幫長輩設好，再用 LINE 傳過去。</p><button class="btn" type="button" id="sendAll"' + (trips.length ? '' : ' disabled') + '>💬 用 LINE 傳</button><button class="btn" type="button" id="copyAll"' + (trips.length ? '' : ' disabled') + '>複製連結</button>') +
+    sec('data', '清除資料', '', '<button class="btn danger" type="button" id="clr">清除這支手機的全部資料</button>') +
+    sec('about', '關於本工具', '', '<p>👤 創作者 Mark Tsai（蔡豐全）<br><a href="mailto:tsaimark@gmail.com">tsaimark@gmail.com</a></p><a class="btn" href="manual.html" target="_blank" rel="noopener">📖 操作手冊</a><button class="btn" type="button" data-warn>⚠ 使用警語</button><button class="btn" type="button" data-install>📲 加入主畫面</button><p>訪客數 <img src="' + BADGE + '" alt="訪客次數" height="20" loading="lazy" style="vertical-align:middle"></p>');
+  var open = []; try{ open = JSON.parse(lsGet(FOLD_KEY) || '[]') || []; }catch(e){}
+  var secs = document.querySelectorAll('.set-sec');
+  function saveFold(){ var o = []; document.querySelectorAll('.set-sec').forEach(function(d){ if(d.open) o.push(d.dataset.sec); }); lsSet(FOLD_KEY, JSON.stringify(o)); }
+  secs.forEach(function(d){ d.open = open.indexOf(d.dataset.sec) >= 0; d.addEventListener('toggle', saveFold); });
+  $('exAll').onclick = function(){ secs.forEach(function(d){ d.open = true; }); };
+  $('coAll').onclick = function(){ secs.forEach(function(d){ d.open = false; }); };
+  $('back').onclick = function(){ go('home'); };
+  document.querySelectorAll('.seg[data-k] button').forEach(function(b){ b.onclick = function(){
+    var k = b.parentNode.dataset.k, v = b.dataset.v; S[k] = k === 'mode' ? v : +v; saveSet(); if(k === 'rate') speak('這樣的速度可以嗎？'); vSettings(); bindCommon();
+  }; });
+  document.querySelectorAll('[data-t]').forEach(function(b){ b.onclick = function(){
+    var i = +b.dataset.i, a = b.dataset.t, t = trips[i];
+    if(a === 'up'){ trips.splice(i - 1, 0, trips.splice(i, 1)[0]); }
+    if(a === 'rn'){ var n = prompt('新的名字', t.name); if(!n || !n.trim()) return; t.name = n.trim().slice(0, 20); }
+    if(a === 'del'){ if(!confirm('要刪除「' + t.name + '」嗎？')) return; trips.splice(i, 1); }
+    saveTrips(); vSettings(); bindCommon();
+  }; });
+  $('addT').onclick = function(){ F = {}; go('from'); };
+  $('sendAll').onclick = function(){ shareTrips(trips); };
+  $('copyAll').onclick = function(){ var u = shareUrl(trips); if(navigator.clipboard){ navigator.clipboard.writeText(u).then(function(){ toast('連結已複製'); }, function(){ prompt('請複製這個連結', u); }); } else prompt('請複製這個連結', u); };
+  $('clr').onclick = function(){ if(!confirm('確定要清除嗎？常去的地方和設定都會消失。')) return; [TRIPS_KEY, SET_KEY, FOLD_KEY, WARN_KEY, PREFIX + 'marquee'].forEach(lsDel); location.href = location.pathname; };
+}
+$('setBtn').onclick = function(){ go('settings'); };
+$('aboutOk').onclick = function(){ $('about').classList.remove('show'); lsSet(WARN_KEY, '1'); };
+$('ringOk').onclick = function(){ $('ring').classList.remove('show'); };
+
+/* ---------- 跑馬燈（必備，不可關閉） ---------- */
+function initMarquee(){
+  var URL_ = "https://script.google.com/macros/s/AKfycbwKX0DNNbY8y4nf90BFTHtxgfqJcHHcZasRrgycl4QAe52_hkjMWSkYk4xOsqU-JPCROw/exec";
+  var MK = PREFIX + 'marquee', REFRESH = 20 * 60 * 1000, bar = $('marqueeBar'), track = $('marqueeTrack'), lastKey = null;
+  function loadCache(){ try{ return JSON.parse(lsGet(MK) || '[]'); }catch(e){ return []; } }
+  function appendText(c, text){ var re = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, li = 0, m; while((m = re.exec(text))){ if(m.index > li) c.appendChild(document.createTextNode(text.slice(li, m.index))); var a = document.createElement('a'); a.href = m[2]; a.textContent = m[1]; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.style.color = 'inherit'; a.style.textDecoration = 'underline'; c.appendChild(a); li = re.lastIndex; } if(li < text.length) c.appendChild(document.createTextNode(text.slice(li))); }
+  function renderM(items){
+    if(!items || !items.length) return;
+    var k = JSON.stringify(items); if(k === lastKey) return; lastKey = k; track.innerHTML = '';
+    var fr = document.createDocumentFragment();
+    function pass(){ items.forEach(function(it, i){ if(i > 0) fr.appendChild(document.createTextNode('　★　')); appendText(fr, String(it)); }); }
+    pass(); fr.appendChild(document.createTextNode('　★　')); pass(); track.appendChild(fr);
+    bar.classList.add('show'); document.body.classList.add('has-marquee');
+    track.style.animationDuration = Math.max(track.scrollWidth / 2 / 60, 12) + 's';
+  }
+  function fetchM(){ fetch(URL_, {method:'POST', body:JSON.stringify({serial:''})}).then(function(r){ return r.json(); }).then(function(d){ if(d && Array.isArray(d.marquee) && d.marquee.length){ lsSet(MK, JSON.stringify(d.marquee)); renderM(d.marquee); } }).catch(function(){}); }
+  renderM(loadCache()); fetchM(); setInterval(fetchM, REFRESH);
+}
+
+/* ---------- 加入主畫面 ---------- */
+var dp = null, ua = navigator.userAgent || '';
+var ios = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+window.addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); dp = e; });
+window.addEventListener('appinstalled', function(){ dp = null; toast('已加入主畫面'); });
+function bindInstall(){
+  document.querySelectorAll('[data-install]').forEach(function(b){
+    if(standalone){ b.style.display = 'none'; return; }
+    b.onclick = function(){ var m = ios ? '請按畫面上的「分享」圖示，選「加入主畫面」' : '請按瀏覽器右上角選單，選「加到主畫面」'; if(!dp){ toast(m); return; } try{ dp.prompt(); dp.userChoice.then(function(){ dp = null; }); }catch(e){ toast(m); } };
+  });
+}
+if('serviceWorker' in navigator && location.protocol !== 'file:'){ window.addEventListener('load', function(){ navigator.serviceWorker.register('service-worker.js').catch(function(){}); }); }
+
+window.addEventListener('hashchange', render);
+window._nbh = {judge:judge, setEtas:function(e){ etas = e; etaAt = Date.now(); drawCards(); checkAlarm(); }, findBuses:findBuses, search:search, loadIndex:loadIndex, trips:function(){ return trips; }, sayTrip:sayTrip};
+applySet(); initMarquee(); render();
+if(!lsGet(WARN_KEY) && currentView() !== 'add') $('about').classList.add('show');
+</script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+name: Update stop index
+on:
+  schedule:
+    - cron: '30 19 * * 0'   # 每週一 03:30（台灣時間）
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build index
+        run: python tools/build_stops.py
+      - name: Commit and redeploy when stops changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 只有日期不同不算更新
+          if git diff --quiet -- stops-data.json; then exit 0; fi
+          if [ "$(git show HEAD:stops-data.json | sed 's/^{"v":"[^"]*"//' | md5sum)" = "$(sed 's/^{"v":"[^"]*"//' stops-data.json | md5sum)" ]; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898729+github-actions[bot]@users.noreply.github.com"
+          git add stops-data.json
+          git commit -m "Update stop index"
+          git push
+          gh workflow run pages.yml --ref master

@@ -1,0 +1,6 @@
+*.exe
+build/
+dist/
+*.bak
+.wrangler/
+node_modules/

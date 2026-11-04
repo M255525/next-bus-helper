@@ -1,0 +1,16 @@
+{
+  "name": "交通出門助手",
+  "short_name": "下一班公車",
+  "description": "給長輩的公車小幫手：不用看路線圖，打開只顯示下一班公車還有幾分鐘到",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#E8E4D8",
+  "theme_color": "#0A4C9A",
+  "lang": "zh-TW",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
