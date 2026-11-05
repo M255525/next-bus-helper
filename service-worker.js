@@ -1,5 +1,5 @@
 // 僅供「加入主畫面」安裝需求使用：network-first + 同源快取備援，不快取跨網域請求（到站時間一律即時查）。
-const CACHE_NAME = 'next-bus-helper-shell-v6';
+const CACHE_NAME = 'next-bus-helper-shell-v7';
 const SHELL_FILES = [
   './',
   './index.html',

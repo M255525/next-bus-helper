@@ -9,7 +9,7 @@
 ## 登入序號閘門（2026-11-05，比照內容工作流工作室）
 - 序號表：試算表「樂齡工具」（`1Yc2nKmGUmZBfWfZFTKcADKh5w4x-56DYygQudzxtdMg`）分頁 **「交通出門助手」**，表頭比對「序號／開始日期／結束日期」，12 個月；選填「人數限制」「目前登入人數」，「已登入裝置」自動維護。`SHEET_NAME` 固定，分頁不存在回 server_error，不退回第一個分頁。
 - 後端 `gas/Code.js`＋`gas/appsscript.json`，綁定腳本 scriptId `1fkveB8FR8rIWzeou6ZKWYee85eyHG3jhgxNHsfMae2qTL_658UsaiHyI`（`gas/.clasp.json` 不進版控）。改後端：`cd gas && clasp push --force && clasp deploy -i AKfycbxXMdRnM6c_oDgv0K7YAXHLGrsERXmADt77ZZHEXkxZd88W5-Cyex4Py6p-dOt33gVamQ`（更新既有部署，網址不變）。
-- 前端：`#entryGate` 全螢幕擋住整個工具；`gateOpen` 為 false 時 `poll()` 不呼叫 Worker。開啟時 fail-closed；**已登入後背景重驗（每 20 分鐘、開 ⚙ 時）只有連線失敗或 server_error 不上鎖**（長輩可能在站牌等車），過期或查無序號才上鎖。localStorage `nbhEntrySerial`／`nbhEntryClientId`，刻意不用 `nbh.` 前綴，「清除資料」不會把人登出。登出在 ⚙ 常用設定「登入序號」。
+- 前端：`#entryGate` 全螢幕擋住整個工具；`gateOpen` 為 false 時 `poll()` 不呼叫 Worker。開啟時 fail-closed；**已登入後背景重驗（每 20 分鐘、開 ⚙ 時）只有連線失敗或 server_error 不上鎖**（長輩可能在站牌等車），過期或查無序號才上鎖。localStorage `nbhEntrySerial`／`nbhEntryClientId`，刻意不用 `nbh.` 前綴，「清除資料」不會把人登出。登出在 ⚙ 常用設定「登入序號」。序號輸入框預設隱藏（使用者要求，避免旁人看到），按「👁 顯示」才明碼，按確認後自動遮回。
 - ⚠ 純前端閘門，懂 DevTools 的人可移除遮罩；Worker 只驗 Origin、不驗序號，這是已知取捨。
 
 ## 設計原則（加功能前先想這條）

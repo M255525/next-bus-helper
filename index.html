@@ -145,7 +145,9 @@ body:has(#entryGate:not(.hidden)){overflow:hidden}
 .gate-box h2{font-size:1.4rem;font-weight:900;margin-bottom:.4rem}
 .gate-box p{margin:.4rem 0}
 .gate-desc{font-size:.9rem}
-#entryGateSerial{width:100%;min-height:3.2rem;font:inherit;font-weight:700;text-align:center;padding:.3rem .5rem;border:2px solid var(--line);border-radius:.6rem;background:#fff;color:#111;margin:.5rem 0}
+.gate-row{display:flex;gap:.35rem;margin:.5rem 0}
+#entryGateSerial{flex:1 1 0;min-width:0;min-height:3.2rem;font:inherit;font-weight:700;text-align:center;padding:.3rem .5rem;border:2px solid var(--line);border-radius:.6rem;background:#fff;color:#111}
+#btnEntryGateToggle{flex:none;width:auto;min-height:3.2rem;font-size:.8rem;padding-left:.5rem;padding-right:.5rem}
 .gate-foot{font-size:.75rem;margin-top:.7rem!important}
 .lic{display:inline-block;font-size:.8rem;font-weight:700;padding:.25rem .6rem;border-radius:.6rem;border:2px solid var(--line);margin-top:.5rem;overflow-wrap:anywhere}
 .lic.ok{color:#14632F;border-color:#14632F;background:#E6F4E9}
@@ -160,7 +162,10 @@ body:has(#entryGate:not(.hidden)){overflow:hidden}
   <div class="gate-box">
     <h2 id="gateTitle">🚏 交通出門助手</h2>
     <p class="gate-desc">請輸入登入序號，再按「確認」。這支手機會記住，之後不用再輸入。序號自第一次驗證起可以用 12 個月。</p>
-    <input type="text" id="entryGateSerial" placeholder="請輸入登入序號" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="登入序號">
+    <div class="gate-row">
+      <input type="password" id="entryGateSerial" placeholder="請輸入登入序號" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="登入序號">
+      <button class="btn" type="button" id="btnEntryGateToggle" aria-pressed="false" aria-label="顯示序號">👁 顯示</button>
+    </div>
     <button class="btn main" type="button" id="btnEntryGateConfirm">確認</button>
     <span id="entryGateStatus" class="lic" role="status">尚未驗證</span>
     <div><span id="entryGateHeadcount" class="lic" aria-live="polite"></span></div>
@@ -963,6 +968,14 @@ function initGate(){
   var input = $('entryGateSerial'), btn = $('btnEntryGateConfirm');
   btn.onclick = function(){ var s = input.value.trim(); lsSet(SERIAL_KEY, s); gateStatus('', '驗證中…'); gateRun(s, false); };
   input.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); btn.click(); } });
+  function maskSerial(hide){   // 預設隱藏，免得旁人看到；要核對時才按顯示
+    var t = $('btnEntryGateToggle');
+    input.type = hide ? 'password' : 'text';
+    t.textContent = hide ? '👁 顯示' : '🙈 隱藏';
+    t.setAttribute('aria-pressed', String(!hide)); t.setAttribute('aria-label', hide ? '顯示序號' : '隱藏序號');
+  }
+  $('btnEntryGateToggle').onclick = function(){ maskSerial(input.type === 'text'); };
+  btn.addEventListener('click', function(){ maskSerial(true); });
   input.value = lsGet(SERIAL_KEY) || '';
   if(input.value){ gateStatus('', '驗證中…'); gateRun(input.value, false); }
   setInterval(gateRenew, RECHECK_MS);
