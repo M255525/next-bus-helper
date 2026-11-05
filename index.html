@@ -113,7 +113,10 @@ main{max-width:640px;margin:0 auto;padding:0 16px 1.5rem}
 .wk-bus{font-size:.8rem;margin:.25rem 0 0;overflow-wrap:anywhere}
 .wk-bus.warn{color:#a33;font-weight:700}
 .wk-list>*+*{margin-top:.4rem}
-.wk-days>*+*{margin-top:.6rem}
+.wk-days>*+*{margin-top:.9rem;padding-top:.7rem;border-top:1px solid var(--line)}
+.wk-day>*+*{margin-top:.35rem}
+.wk-tag{font-size:.8rem;font-weight:700;margin:.4rem 0 0}
+.wk-add{min-height:2.6rem;font-size:.8rem}
 .wk-row .wk-off{grid-row:span 2;grid-column:2 / -1;align-self:center}
 .trip-row{border-top:1px solid var(--line);padding-top:.45rem}
 .trip-row b{display:block;font-weight:900;overflow-wrap:anywhere}
@@ -246,19 +249,36 @@ function findBuses(a, b){
 }
 
 /* ---------- 到站時間 ---------- */
-var etas = {}, etaAt = 0, tripAt = {}, tpAt = null, pollT = null, fetching = false, down = {}, pollBad = false, keep = KEEP, liveKey = '';
-/* 自動更新時段：每一趟自己的 t.week[getDay()] = {on,a,b}，沒有 t.week＝全天。結束時間不晚於開始＝跨到隔天。
+var etas = {}, etaAt = 0, tripAt = {}, tripKey = {}, tpAt = null, pollT = null, fetching = false, down = {}, pollBad = false, keep = KEEP, liveKey = '';
+/* 自動更新時段：每一趟自己的 t.week[getDay()] = {on,a,b,a2?,b2?,x?}，沒有 t.week＝全天。
+   a2/b2＝第二段時間；x＝當天不看的路線（busK 字串），沒有＝全部都看。結束時間不晚於開始＝跨到隔天，跨夜那段沿用開始那天的路線。
    時段外不自動查這一趟；打開畫面、按再看一次仍會全部查一次；開著提醒的那一趟不受時段限制。 */
 function hm(x){ var p = String(x).split(':'); return +p[0] * 60 + +p[1]; }
-function tripIn(t, now){
-  if(!t.week) return true;
-  now = now || new Date(Date.now());
-  var w = t.week, d = now.getDay(), m = now.getHours() * 60 + now.getMinutes(), c = w[d], y = w[(d + 6) % 7];
-  if(c.on){ var a = hm(c.a), b = hm(c.b); if(a < b ? m >= a && m < b : m >= a) return true; }
-  return y.on && hm(y.a) >= hm(y.b) && m < hm(y.b);
+function busK(b){ return b.r + '|' + b.h; }
+function dayWins(c){ return c.a2 ? [[c.a, c.b], [c.a2, c.b2]] : [[c.a, c.b]]; }
+function matchDays(t, now){   // 現在落在哪幾天的時段裡（星期索引）
+  var d = now.getDay(), y = (d + 6) % 7, m = now.getHours() * 60 + now.getMinutes(), o = [];
+  if(t.week[d].on && dayWins(t.week[d]).some(function(w){ var a = hm(w[0]), b = hm(w[1]); return a < b ? m >= a && m < b : m >= a; })) o.push(d);
+  if(t.week[y].on && dayWins(t.week[y]).some(function(w){ return hm(w[0]) >= hm(w[1]) && m < hm(w[1]); })) o.push(y);
+  return o;
 }
+function tripIn(t, now){ return !t.week || matchDays(t, now || new Date(Date.now())).length > 0; }
+function dayBus(t, i){
+  var x = t.week[i].x; if(!x || !x.length) return t.b;
+  var l = t.b.filter(function(b){ return x.indexOf(busK(b)) < 0; });
+  return l.length ? l : t.b;
+}
+function busesNow(t, now){   // 這一刻要查、要判斷的公車
+  if(!t.week) return t.b;
+  now = now || new Date(Date.now());
+  var m = matchDays(t, now), d = now.getDay(), o = [];
+  if(!m.length) return t.week[d].on ? dayBus(t, d) : t.b;
+  m.forEach(function(i){ dayBus(t, i).forEach(function(b){ if(o.indexOf(b) < 0) o.push(b); }); });
+  return o;
+}
+function busKey(t){ return busesNow(t).map(function(b){ return b.c + b.s; }).join(); }
 function live(t){ return alarmId === t.id || tripIn(t); }
-function liveIds(){ return trips.filter(live).map(function(t){ return t.id; }).join(); }
+function liveIds(){ return trips.filter(live).map(function(t){ return t.id + ':' + busKey(t); }).join(';'); }
 function paused(){ return !trips.some(live); }
 function tick(){ if(paused()) pollT = null; else poll(true); }
 function chunk(list, n){ var o = []; for(var i = 0; i < list.length; i += n) o.push(list.slice(i, i + n)); return o; }
@@ -269,7 +289,8 @@ function poll(auto){
   if(fetching) return Promise.resolve();
   var seen = {}, all = [], list = auto === true ? trips.filter(live) : trips;
   liveKey = liveIds();
-  list.forEach(function(t){ t.b.forEach(function(b){ var k = b.c + b.s; if(!seen[k]){ seen[k] = 1; all.push(b); } }); });
+  var qk = {}; list.forEach(function(t){ qk[t.id] = busKey(t); });
+  list.forEach(function(t){ busesNow(t).forEach(function(b){ var k = b.c + b.s; if(!seen[k]){ seen[k] = 1; all.push(b); } }); });
   fetching = true;
   return Promise.all(chunk(all, 30).map(function(g){
     var q = {t:[], n:[]}; g.forEach(function(b){ q[b.c].push(b.s); });
@@ -280,7 +301,7 @@ function poll(auto){
     rs.forEach(function(d){ if(!d.ok) bad = true; Object.assign(e, d.r || {}); if(d.tpAt) tpAt = d.tpAt; (d.miss || []).forEach(function(c){ dn[c] = 1; }); });
     if(!bad || Object.keys(e).length){
       all.forEach(function(b){ delete etas[b.s]; }); Object.assign(etas, e);
-      etaAt = Date.now(); list.forEach(function(t){ tripAt[t.id] = etaAt; }); down = dn;
+      etaAt = Date.now(); list.forEach(function(t){ tripAt[t.id] = etaAt; tripKey[t.id] = qk[t.id]; }); down = dn;
     }
     pollBad = bad || Object.keys(dn).length > 0;
   }).catch(function(){ pollBad = true; }).then(function(){
@@ -303,21 +324,22 @@ function nextDelay(){
   });
   return d;
 }
-function fresh(t){ var a = tripAt[t.id]; return a && Date.now() - a < keep; }
+function seenAt(t){ return tripKey[t.id] === busKey(t) ? tripAt[t.id] : 0; }   // 要看的車換了就算還沒查過
+function fresh(t){ var a = seenAt(t); return a && Date.now() - a < keep; }
 /* 算出一趟要顯示什麼。回傳 {bus, sec, code, hint, cls, say} */
 function judge(t){
   var walk = (t.walk || 0) * 60;
   if(!fresh(t)){
-    var at = tripAt[t.id];
-    if(at && !live(t) && !pollBad) return {none:true, word:'現在沒有更新', hint:'要看最新時間，請按下面的「再看一次」', cls:''};
+    var at = seenAt(t);
+    if(tripAt[t.id] && !live(t) && !pollBad) return {none:true, word:'現在沒有更新', hint:'要看最新時間，請按下面的「再看一次」', cls:''};
     return {none:true, word:at ? '暫時查不到' : '查詢中…', hint:at ? '請看站牌，或等一下再看' : '', cls:''};
   }
-  var run = [], codes = [];
-  t.b.forEach(function(b){ var v = etas[b.s]; if(v == null) return; if(v >= 0) run.push({b:b, v:v}); else codes.push(v); });
+  var run = [], codes = [], bs = busesNow(t);
+  bs.forEach(function(b){ var v = etas[b.s]; if(v == null) return; if(v >= 0) run.push({b:b, v:v}); else codes.push(v); });
   run.sort(function(x, y){ return x.v - y.v; });
   if(!run.length){
     if(!codes.length){
-      var srcDown = t.b.some(function(b){ return down[b.c]; });
+      var srcDown = bs.some(function(b){ return down[b.c]; });
       return {none:true, word:'暫時查不到', hint:srcDown ? '請看站牌，或等一下再看' : '站牌資料可能換了，請家人重新設定這一趟', cls:'miss'};
     }
     var w = codes.indexOf(-1) >= 0 ? ['還沒發車', '車還在總站，時間未定'] : codes.indexOf(-2) >= 0 ? ['今天不停這站', '交通管制，請看站牌公告'] : codes.indexOf(-4) >= 0 ? ['今天沒開車', '請改搭別的車'] : ['今天沒車了', '末班車已經過了'];
@@ -579,7 +601,7 @@ function vDone(){
 function b64e(s){ return btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
 function b64d(s){ return decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/')))); }
 function shareUrl(list){
-  var p = list.map(function(t){ return [t.name, t.from, t.to, t.walk, t.b.map(function(b){ return [b.r, b.h, b.c, b.s]; }), t.week ? t.week.map(function(d){ return [d.on ? 1 : 0, d.a, d.b]; }) : 0]; });
+  var p = list.map(function(t){ return [t.name, t.from, t.to, t.walk, t.b.map(function(b){ return [b.r, b.h, b.c, b.s]; }), t.week ? t.week.map(function(d){ return [d.on ? 1 : 0, d.a, d.b, d.a2 || 0, d.b2 || 0, d.x || 0]; }) : 0]; });
   return location.origin + location.pathname + '?openExternalBrowser=1#add=' + b64e(JSON.stringify(p));
 }
 function shareTrips(list){
@@ -593,7 +615,12 @@ function parseAdd(){
       var b = (x[4] || []).slice(0, MAX_BUS).map(function(y){ return {r:String(y[0]).slice(0, 30), h:String(y[1]).slice(0, 40), c:y[2] === 'n' ? 'n' : 't', s:parseInt(y[3], 10)}; }).filter(function(y){ return y.s > 0; });
       var t = {id:newId(), name:String(x[0]).slice(0, 20), from:String(x[1]).slice(0, 40), to:String(x[2] || '').slice(0, 40), walk:Math.min(60, Math.max(0, parseInt(x[3], 10) || 0)), b:b};
       var ok = /^([01]\d|2[0-3]):[0-5]\d$/;
-      if(Array.isArray(x[5]) && x[5].length === 7 && x[5].every(function(d){ return Array.isArray(d) && ok.test(d[1]) && ok.test(d[2]); })) t.week = x[5].map(function(d){ return {on:!!d[0], a:d[1], b:d[2]}; });
+      if(Array.isArray(x[5]) && x[5].length === 7 && x[5].every(function(d){ return Array.isArray(d) && ok.test(d[1]) && ok.test(d[2]); })) t.week = x[5].map(function(d){
+        var o = {on:!!d[0], a:d[1], b:d[2]}, keys = b.map(busK);
+        if(ok.test(d[3]) && ok.test(d[4])){ o.a2 = d[3]; o.b2 = d[4]; }
+        if(Array.isArray(d[5])){ var xs = d[5].map(String).filter(function(k){ return keys.indexOf(k) >= 0; }); if(xs.length && keys.some(function(k){ return xs.indexOf(k) < 0; })) o.x = xs; }
+        return o;
+      });
       return t;
     }).filter(function(t){ return t.b.length; });
   }catch(e){ return []; }
@@ -628,8 +655,9 @@ function defWeek(){ return [0, 1, 2, 3, 4, 5, 6].map(function(){ return {on:true
 function fillWeek(t){   // 依班次帶入：最早首班到最晚末班＋1 小時（末班是起站發車，到站會再晚一些）
   var n = 0;
   t.week.forEach(function(d, i){
-    var sp = t.b.map(function(b){ return span(svcOf(b), i === 0 || i === 6); }).filter(Boolean);
+    var sp = dayBus(t, i).map(function(b){ return span(svcOf(b), i === 0 || i === 6); }).filter(Boolean);
     if(!sp.length) return;
+    delete d.a2; delete d.b2;
     d.a = hhmm(Math.min.apply(null, sp.map(function(x){ return x[0]; })));
     d.b = hhmm(Math.max.apply(null, sp.map(function(x){ return x[1]; })) + 60); n++;
   });
@@ -637,12 +665,12 @@ function fillWeek(t){   // 依班次帶入：最早首班到最晚末班＋1 小
 }
 function dayLine(t, i){
   if(!IDX || !t.week[i].on) return '';
-  var d = t.week[i], a = hm(d.a), b = hm(d.b), yes = [], no = [], seen = {};
-  if(b <= a) b += 1440;
-  t.b.forEach(function(x){
+  var wins = dayWins(t.week[i]).map(function(w){ var a = hm(w[0]), b = hm(w[1]); return [a, b <= a ? b + 1440 : b]; }), yes = [], no = [], seen = {};
+  dayBus(t, i).forEach(function(x){
     if(seen[x.r]) return; seen[x.r] = 1;
     var sp = span(svcOf(x), i === 0 || i === 6); if(!sp) return;
-    (a < sp[1] + 90 && b > sp[0]) || (a + 1440 < sp[1] + 90 && b + 1440 > sp[0]) ? yes.push(x.r) : no.push(x.r);
+    var hit = wins.some(function(w){ return (w[0] < sp[1] + 90 && w[1] > sp[0]) || (w[0] + 1440 < sp[1] + 90 && w[1] + 1440 > sp[0]); });
+    (hit ? yes : no).push(x.r);
   });
   function names(l){ return l.length > 4 ? l.slice(0, 4).join('、') + ' 等 ' + l.length + ' 路' : l.join('、'); }
   return (yes.length ? '<p class="wk-bus">這段時間有車：' + esc(names(yes)) + '</p>' : '') + (no.length ? '<p class="wk-bus warn">這段時間沒有班次：' + esc(names(no)) + '</p>' : '');
@@ -661,16 +689,25 @@ function busList(t){
 function vSched(){
   var id = location.hash.slice(7), t = trips.filter(function(x){ return x.id === id; })[0];
   if(!t){ location.replace('#settings'); return; }
+  var seenB = {}, uniq = t.b.filter(function(b){ var k = busK(b); if(seenB[k]) return false; seenB[k] = 1; return true; });
+  var names = {}; uniq.forEach(function(b){ names[b.r] = (names[b.r] || 0) + 1; });
+  function tin(i, k, v, label){ return '<input type="time" data-wt="' + i + ':' + k + '" value="' + esc(v) + '" aria-label="' + label + '">'; }
   var rows = t.week ? DAYS.map(function(x){
-    var d = t.week[x[0]];
-    return '<div><div class="wk-row"><button class="btn" type="button" data-wd="' + x[0] + '" aria-pressed="' + !!d.on + '" aria-label="星期' + x[1] + '">週' + x[1] + '</button>' +
-      (d.on ? '<input type="time" data-wa="' + x[0] + '" value="' + esc(d.a) + '" aria-label="星期' + x[1] + '開始時間"><span class="wk-to">到</span><input type="time" data-wb="' + x[0] + '" value="' + esc(d.b) + '" aria-label="星期' + x[1] + '結束時間">' : '<span class="wk-off">這天不自動更新</span>') +
-      '</div><div id="wl' + x[0] + '">' + dayLine(t, x[0]) + '</div></div>';
+    var i = x[0], d = t.week[i], w = '星期' + x[1], h = '<div class="wk-day"><div class="wk-row"><button class="btn" type="button" data-wd="' + i + '" aria-pressed="' + !!d.on + '" aria-label="' + w + '">週' + x[1] + '</button>';
+    if(!d.on) return h + '<span class="wk-off">這天不自動更新</span></div></div>';
+    h += tin(i, 'a', d.a, w + '開始時間') + '<span class="wk-to">到</span>' + tin(i, 'b', d.b, w + '結束時間') + '</div>';
+    h += d.a2 ? '<div class="wk-row"><button class="btn" type="button" data-w2del="' + i + '" aria-label="移除' + w + '第二段時間">移除</button>' + tin(i, 'a2', d.a2, w + '第二段開始時間') + '<span class="wk-to">到</span>' + tin(i, 'b2', d.b2, w + '第二段結束時間') + '</div>'
+      : '<button class="btn wk-add" type="button" data-w2add="' + i + '">＋ 加第二段時間</button>';
+    if(uniq.length > 1) h += '<p class="wk-tag">這天要看的車</p><div class="seg">' + uniq.map(function(b){
+      var k = busK(b), on = !(d.x && d.x.indexOf(k) >= 0);
+      return '<button class="btn" type="button" data-wr="' + i + '" data-rk="' + esc(k) + '" aria-pressed="' + on + '">' + esc(b.r) + (names[b.r] > 1 ? ' 往' + esc(b.h) : '') + '</button>';
+    }).join('') + '</div>';
+    return h + '<div id="wl' + i + '">' + dayLine(t, i) + '</div></div>';
   }).join('') : '';
   $('view').innerHTML = '<button class="linkbtn" type="button" id="back">← 回到常用設定</button><h2 class="q">' + esc(t.name) + '</h2><p class="sub">自動更新時段</p>' +
     '<div class="wk-list">' + busList(t) + '</div><p class="wk-off">班次時間是起站發車時間，到您這站會再晚一些。週六日算假日，國定假日請看站牌公告。</p>' +
     '<div class="seg" style="margin:.6rem 0"><button class="btn" type="button" data-sm="0" aria-pressed="' + !t.week + '">全天</button><button class="btn" type="button" data-sm="1" aria-pressed="' + !!t.week + '">依星期自訂</button></div>' +
-    (t.week ? '<button class="btn" type="button" id="wkFill" style="margin-bottom:.6rem">依公車班次帶入時間</button><div class="wk-days">' + rows + '</div><p class="wk-off" style="margin-top:.6rem">結束時間比開始早，代表跨到隔天。其他時間打開畫面或按「再看一次」一樣查得到。按了「🔔 時間到叫我」會一直更新到提醒結束。</p><button class="btn" type="button" id="wkAll" style="margin-top:.5rem">把週一的時間套用到每天</button>' : '');
+    (t.week ? '<button class="btn" type="button" id="wkFill" style="margin-bottom:.6rem">依公車班次帶入時間</button><div class="wk-days">' + rows + '</div><p class="wk-off" style="margin-top:.6rem">時段內只查當天勾選的車。結束時間比開始早，代表跨到隔天，跨過午夜那段照開始那天勾選的車。其他時間打開畫面或按「再看一次」一樣查得到。按了「🔔 時間到叫我」會一直更新到提醒結束。</p><button class="btn" type="button" id="wkAll" style="margin-top:.5rem">把週一的設定套用到每天</button>' : '');
   function again(){ saveTrips(); vSched(); bindCommon(); }
   $('back').onclick = function(){ go('settings'); };
   document.querySelectorAll('[data-sm]').forEach(function(b){ b.onclick = function(){
@@ -680,13 +717,34 @@ function vSched(){
     loadIndex().then(function(){ fillWeek(t); }).catch(function(){}).then(function(){ if(currentView() === 'sched') again(); else saveTrips(); });
   }; });
   document.querySelectorAll('[data-wd]').forEach(function(b){ b.onclick = function(){ var d = t.week[+b.dataset.wd]; d.on = !d.on; again(); }; });
-  document.querySelectorAll('[data-wa],[data-wb]').forEach(function(n){ n.onchange = function(){
-    var isA = 'wa' in n.dataset, i = +(isA ? n.dataset.wa : n.dataset.wb), d = t.week[i];
-    if(!/^\d\d:\d\d$/.test(n.value)){ n.value = isA ? d.a : d.b; return; }
-    d[isA ? 'a' : 'b'] = n.value; saveTrips(); $('wl' + i).innerHTML = dayLine(t, i);
+  document.querySelectorAll('[data-wt]').forEach(function(n){ n.onchange = function(){
+    var p = n.dataset.wt.split(':'), i = +p[0], d = t.week[i];
+    if(!/^\d\d:\d\d$/.test(n.value)){ n.value = d[p[1]]; return; }
+    d[p[1]] = n.value; saveTrips(); $('wl' + i).innerHTML = dayLine(t, i);
   }; });
-  if($('wkAll')) $('wkAll').onclick = function(){ t.week.forEach(function(d){ d.a = t.week[1].a; d.b = t.week[1].b; }); toast('已套用到每天'); again(); };
-  if($('wkFill')) $('wkFill').onclick = function(){ loadIndex().then(function(){ toast(fillWeek(t) ? '已依班次帶入' : '這一趟沒有班次資料'); again(); }).catch(function(){ toast('暫時讀不到班次資料'); }); };
+  document.querySelectorAll('[data-w2add]').forEach(function(b){ b.onclick = function(){ var d = t.week[+b.dataset.w2add]; d.a2 = '16:00'; d.b2 = '19:00'; again(); }; });
+  document.querySelectorAll('[data-w2del]').forEach(function(b){ b.onclick = function(){ var d = t.week[+b.dataset.w2del]; delete d.a2; delete d.b2; again(); }; });
+  document.querySelectorAll('[data-wr]').forEach(function(b){ b.onclick = function(){
+    var d = t.week[+b.dataset.wr], k = b.dataset.rk, x = (d.x || []).slice(), at = x.indexOf(k);
+    if(at >= 0) x.splice(at, 1);
+    else {
+      x.push(k);
+      if(!uniq.some(function(u){ return x.indexOf(busK(u)) < 0; })){ toast('至少要留一路車'); return; }
+    }
+    if(x.length) d.x = x; else delete d.x;
+    again();
+  }; });
+  if($('wkAll')) $('wkAll').onclick = function(){
+    var m = t.week[1];
+    t.week.forEach(function(d){
+      if(d === m) return;
+      d.a = m.a; d.b = m.b; delete d.a2; delete d.b2; delete d.x;
+      if(m.a2){ d.a2 = m.a2; d.b2 = m.b2; }
+      if(m.x) d.x = m.x.slice();
+    });
+    toast('已套用到每天'); again();
+  };
+  if($('wkFill')) $('wkFill').onclick = function(){ if(t.week.some(function(d){ return d.a2; }) && !confirm('帶入後，第二段時間會清掉。要繼續嗎？')) return; loadIndex().then(function(){ toast(fillWeek(t) ? '已依班次帶入' : '這一趟沒有班次資料'); again(); }).catch(function(){ toast('暫時讀不到班次資料'); }); };
   if(!IDX) loadIndex().then(function(){ if(currentView() === 'sched'){ vSched(); bindCommon(); } }).catch(function(){ var l = document.querySelector('.wk-list'); if(l) l.innerHTML = '<p class="wk-off">暫時讀不到班次資料，時間還是可以設定。</p>'; });
 }
 
@@ -774,7 +832,7 @@ function bindInstall(){
 if('serviceWorker' in navigator && location.protocol !== 'file:'){ window.addEventListener('load', function(){ navigator.serviceWorker.register('service-worker.js').catch(function(){}); }); }
 
 window.addEventListener('hashchange', render);
-window._nbh = {judge:judge, nextDelay:nextDelay, tripIn:tripIn, setEtas:function(e){ etas = e; etaAt = Date.now(); trips.forEach(function(t){ tripAt[t.id] = etaAt; }); drawCards(); checkAlarm(); }, findBuses:findBuses, search:search, loadIndex:loadIndex, trips:function(){ return trips; }, sayTrip:sayTrip};
+window._nbh = {judge:judge, nextDelay:nextDelay, tripIn:tripIn, busesNow:busesNow, setEtas:function(e){ etas = e; etaAt = Date.now(); trips.forEach(function(t){ tripAt[t.id] = etaAt; tripKey[t.id] = busKey(t); }); drawCards(); checkAlarm(); }, findBuses:findBuses, search:search, loadIndex:loadIndex, trips:function(){ return trips; }, sayTrip:sayTrip};
 applySet(); initMarquee(); render();
 if(!lsGet(WARN_KEY) && currentView() !== 'add') $('about').classList.add('show');
 </script>
