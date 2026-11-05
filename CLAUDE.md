@@ -6,6 +6,12 @@
 - GitHub Pages（Actions `pages.yml`，push master 自動部署）：<https://m255525.github.io/next-bus-helper/>；visitor-badge `m255525.nextbushelper`。
 - Worker `next-bus-eta`：<https://next-bus-eta.content-workflow.workers.dev/eta>，原始碼 `worker/`，部署 `cd worker && npx wrangler deploy`（不會隨 git push 部署）。
 
+## 登入序號閘門（2026-11-05，比照內容工作流工作室）
+- 序號表：試算表「樂齡工具」（`1Yc2nKmGUmZBfWfZFTKcADKh5w4x-56DYygQudzxtdMg`）分頁 **「交通出門助手」**，表頭比對「序號／開始日期／結束日期」，12 個月；選填「人數限制」「目前登入人數」，「已登入裝置」自動維護。`SHEET_NAME` 固定，分頁不存在回 server_error，不退回第一個分頁。
+- 後端 `gas/Code.js`＋`gas/appsscript.json`，綁定腳本 scriptId `1fkveB8FR8rIWzeou6ZKWYee85eyHG3jhgxNHsfMae2qTL_658UsaiHyI`（`gas/.clasp.json` 不進版控）。改後端：`cd gas && clasp push --force && clasp deploy -i AKfycbxXMdRnM6c_oDgv0K7YAXHLGrsERXmADt77ZZHEXkxZd88W5-Cyex4Py6p-dOt33gVamQ`（更新既有部署，網址不變）。
+- 前端：`#entryGate` 全螢幕擋住整個工具；`gateOpen` 為 false 時 `poll()` 不呼叫 Worker。開啟時 fail-closed；**已登入後背景重驗（每 20 分鐘、開 ⚙ 時）只有連線失敗或 server_error 不上鎖**（長輩可能在站牌等車），過期或查無序號才上鎖。localStorage `nbhEntrySerial`／`nbhEntryClientId`，刻意不用 `nbh.` 前綴，「清除資料」不會把人登出。登出在 ⚙ 常用設定「登入序號」。
+- ⚠ 純前端閘門，懂 DevTools 的人可移除遮罩；Worker 只驗 Origin、不驗序號，這是已知取捨。
+
 ## 設計原則（加功能前先想這條）
 - 首頁只回答一件事：下一班幾分鐘到。不放路線圖、不放站序、不加分頁。
 - 長輩只看，設定交給家人也可以：說「在哪上車、要去哪裡」，程式找直達車；用 LINE 連結傳給長輩，長輩只按「加入」。
@@ -29,7 +35,7 @@
 - 班次對照：`stops-data.json` 的 `r[5]`（首末班＋班距，平日／假日，依方向）。**首末班是起站時間**，判斷「這段時間有車」放寬 90 分鐘，「依班次帶入」末班＋1 小時。不用 `GetTimeTable`：不分去返程且多數路線不完整（617 只列晚上 3 班）；新北沒有時刻表。國定假日資料沒有，週六日算假日。
 - 🔔 時間到叫我：網頁不能背景執行，畫面要開著（Wake Lock 防休眠）。
 - 分享連結 `?openExternalBrowser=1#add=<base64url>`：`openExternalBrowser` 讓 LINE 改用手機瀏覽器開，資料才會留在瀏覽器；內容在 `parseAdd()` 驗證。
-- 儲存鍵 `nbh.trips`、`nbh.settings`、`nbh.fold`、`nbh.warnSeen`、`nbh.marquee`。
+- 儲存鍵（序號另見登入閘門）`nbh.trips`、`nbh.settings`、`nbh.fold`、`nbh.warnSeen`、`nbh.marquee`。
 - 標準配備：跑馬燈（不可關）、⚙ 常用設定（收合式＋關於本工具）、首訪警語、manual.html#creator 完整版、PWA、訪客計數器。
 - `manual.html` 由 `tools/build_manual.py` 組出，改手冊要改 `tools/manual_body.html` 再重跑。
 - 改 `index.html` 上線時要升 `service-worker.js` 的 `CACHE_NAME`。

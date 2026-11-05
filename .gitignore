@@ -4,3 +4,4 @@ dist/
 *.bak
 .wrangler/
 node_modules/
+gas/.clasp.json

@@ -137,11 +137,36 @@ main{max-width:640px;margin:0 auto;padding:0 16px 1.5rem}
 #ring p{font-size:1.2rem;font-weight:900;margin-bottom:.8rem}
 #toast{position:fixed;left:16px;right:16px;bottom:1.2rem;margin:0 auto;max-width:520px;background:#17191C;color:#fff;font-weight:700;padding:.6rem .8rem;border-radius:.7rem;text-align:center;z-index:90;opacity:0;pointer-events:none;transition:opacity .2s}
 #toast.show{opacity:1}
+/* 登入序號閘門 */
+#entryGate{position:fixed;inset:0;background:#0D0E0C;z-index:3200;display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto}
+#entryGate.hidden{display:none}
+body:has(#entryGate:not(.hidden)){overflow:hidden}
+.gate-box{background:var(--paper);color:var(--ink);border:4px solid #FFB300;border-radius:1rem;padding:1.2rem 1rem;width:460px;max-width:100%;text-align:center;margin:auto}
+.gate-box h2{font-size:1.4rem;font-weight:900;margin-bottom:.4rem}
+.gate-box p{margin:.4rem 0}
+.gate-desc{font-size:.9rem}
+#entryGateSerial{width:100%;min-height:3.2rem;font:inherit;font-weight:700;text-align:center;padding:.3rem .5rem;border:2px solid var(--line);border-radius:.6rem;background:#fff;color:#111;margin:.5rem 0}
+.gate-foot{font-size:.75rem;margin-top:.7rem!important}
+.lic{display:inline-block;font-size:.8rem;font-weight:700;padding:.25rem .6rem;border-radius:.6rem;border:2px solid var(--line);margin-top:.5rem;overflow-wrap:anywhere}
+.lic.ok{color:#14632F;border-color:#14632F;background:#E6F4E9}
+.lic.bad{color:#A32019;border-color:#A32019;background:#FBE9E7}
+#entryGateHeadcount:empty,#headcountBadge:empty{display:none}
 @media (prefers-reduced-motion:reduce){#marqueeTrack{animation-duration:90s!important}.set-sec>summary::after{transition:none}}
 @media print{#marqueeBar,.acts,.foot{display:none}}
 </style>
 </head>
 <body>
+<div id="entryGate" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+  <div class="gate-box">
+    <h2 id="gateTitle">🚏 交通出門助手</h2>
+    <p class="gate-desc">請輸入登入序號，再按「確認」。這支手機會記住，之後不用再輸入。序號自第一次驗證起可以用 12 個月。</p>
+    <input type="text" id="entryGateSerial" placeholder="請輸入登入序號" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="登入序號">
+    <button class="btn main" type="button" id="btnEntryGateConfirm">確認</button>
+    <span id="entryGateStatus" class="lic" role="status">尚未驗證</span>
+    <div><span id="entryGateHeadcount" class="lic" aria-live="polite"></span></div>
+    <p class="gate-foot">沒有序號？請洽 <a href="mailto:tsaimark@gmail.com">tsaimark@gmail.com</a>｜<a href="manual.html" target="_blank" rel="noopener">📖 操作手冊</a></p>
+  </div>
+</div>
 <div id="marqueeBar"><div id="marqueeTrack"></div></div>
 <div class="top">
   <h1>🚏 交通出門助手</h1>
@@ -249,6 +274,7 @@ function findBuses(a, b){
 }
 
 /* ---------- 到站時間 ---------- */
+var gateOpen = false;   // 登入序號驗證通過才 true；false 時絕不呼叫 Worker
 var etas = {}, etaAt = 0, tripAt = {}, tripKey = {}, tpAt = null, pollT = null, fetching = false, down = {}, pollBad = false, keep = KEEP, liveKey = '', drawnDay = 0;
 /* 自動更新時段：每一趟自己的 t.week[getDay()] = {on,a,b,a2?,b2?,x?}，沒有 t.week＝全天。
    a2/b2＝第二段時間；x＝當天不看的路線（busK 字串），沒有＝全部都看。結束時間不晚於開始＝跨到隔天，跨夜那段沿用開始那天的路線。
@@ -293,7 +319,7 @@ function tick(){ if(paused()) pollT = null; else poll(); }
 function chunk(list, n){ var o = []; for(var i = 0; i < list.length; i += n) o.push(list.slice(i, i + n)); return o; }
 function poll(){
   clearTimeout(pollT); pollT = null;
-  if(currentView() !== 'home' || document.hidden || !trips.length) return Promise.resolve();
+  if(!gateOpen || currentView() !== 'home' || document.hidden || !trips.length) return Promise.resolve();
   var list = trips.filter(live);
   liveKey = liveIds();
   if(!list.length){ drawCards(); return Promise.resolve(); }
@@ -785,6 +811,7 @@ function vSettings(){
     sec('sched', '自動更新時段', custom ? custom + ' 個地方有自訂' : '全天', '<p>每個地方可以依星期設定幾點到幾點才查公車，其他時間不查，並對照這一趟公車的班次。</p>' + schedRows) +
     sec('trips', '我常去的地方', trips.length + ' 個', rows + '<button class="btn" type="button" id="addT">＋ 新增</button>') +
     sec('send', '傳給家人', '', '<p>把這裡設好的地方全部傳到另一支手機。家人可以先幫長輩設好，再用 LINE 傳過去。</p><button class="btn" type="button" id="sendAll"' + (trips.length ? '' : ' disabled') + '>💬 用 LINE 傳</button><button class="btn" type="button" id="copyAll"' + (trips.length ? '' : ' disabled') + '>複製連結</button>') +
+    sec('lic', '登入序號', gateOpen ? '已登入' : '', '<span id="licBadge" class="lic ' + gateInfo.cls + '">' + esc(gateInfo.text) + '</span><div><span id="headcountBadge" class="lic ' + gateInfo.hcls + '">' + esc(gateInfo.head) + '</span></div><button class="btn" type="button" id="btnLogout">登出</button>') +
     sec('data', '清除資料', '', '<button class="btn danger" type="button" id="clr">清除這支手機的全部資料</button>') +
     sec('about', '關於本工具', '', '<p>👤 創作者 Mark Tsai（蔡豐全）<br><a href="mailto:tsaimark@gmail.com">tsaimark@gmail.com</a></p><a class="btn" href="manual.html" target="_blank" rel="noopener">📖 操作手冊</a><button class="btn" type="button" data-warn>⚠ 使用警語</button><button class="btn" type="button" data-install>📲 加入主畫面</button><p>訪客數 <img src="' + BADGE + '" alt="訪客次數" height="20" loading="lazy" style="vertical-align:middle"></p>');
   var open = []; try{ open = JSON.parse(lsGet(FOLD_KEY) || '[]') || []; }catch(e){}
@@ -806,11 +833,12 @@ function vSettings(){
     saveTrips(); vSettings(); bindCommon();
   }; });
   $('addT').onclick = function(){ F = {}; go('from'); };
+  $('btnLogout').onclick = function(){ if(confirm('登出後要重新輸入序號才能使用。要登出嗎？')) gateLogout(); };
   $('sendAll').onclick = function(){ shareTrips(trips); };
   $('copyAll').onclick = function(){ var u = shareUrl(trips); if(navigator.clipboard){ navigator.clipboard.writeText(u).then(function(){ toast('連結已複製'); }, function(){ prompt('請複製這個連結', u); }); } else prompt('請複製這個連結', u); };
   $('clr').onclick = function(){ if(!confirm('確定要清除嗎？常去的地方和設定都會消失。')) return; [TRIPS_KEY, SET_KEY, FOLD_KEY, WARN_KEY, PREFIX + 'marquee'].forEach(lsDel); location.href = location.pathname; };
 }
-$('setBtn').onclick = function(){ go('settings'); };
+$('setBtn').onclick = function(){ gateRenew(); go('settings'); };
 $('aboutOk').onclick = function(){ $('about').classList.remove('show'); lsSet(WARN_KEY, '1'); };
 $('ringOk').onclick = function(){ $('ring').classList.remove('show'); };
 
@@ -847,9 +875,103 @@ function bindInstall(){
 }
 if('serviceWorker' in navigator && location.protocol !== 'file:'){ window.addEventListener('load', function(){ navigator.serviceWorker.register('service-worker.js').catch(function(){}); }); }
 
+/* ---------- 登入序號閘門（比照內容工作流工作室）----------
+   序號存在試算表「樂齡工具」的分頁「交通出門助手」，由綁定的 Apps Script（gas/Code.js）驗證。
+   開啟時 fail-closed：驗證沒通過就不能用、也不呼叫 Worker。
+   已登入後的背景重驗若只是連線失敗，不上鎖（長輩可能正在站牌等車）；序號過期、查無序號才上鎖。 */
+var LICENSE_CHECK_URL = 'https://script.google.com/macros/s/AKfycbxXMdRnM6c_oDgv0K7YAXHLGrsERXmADt77ZZHEXkxZd88W5-Cyex4Py6p-dOt33gVamQ/exec';
+var SERIAL_KEY = 'nbhEntrySerial', CLIENT_KEY = 'nbhEntryClientId', RECHECK_MS = 20 * 60 * 1000;
+var gateInfo = {cls:'', text:'尚未驗證', hcls:'', head:''};
+var REASON_LABEL = {
+  missing_serial:'請輸入登入序號',
+  serial_not_found:'查無此序號，請確認有沒有打錯',
+  expired:'這組序號已經過期了',
+  network_error:'連不上網路，請確認網路後再按一次確認',
+  server_error:'驗證暫時失敗，請等一下再試'
+};
+function clientId(){
+  var id = lsGet(CLIENT_KEY);
+  if(!id){ id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'c-' + Date.now() + '-' + Math.random().toString(36).slice(2); lsSet(CLIENT_KEY, id); }
+  return id;
+}
+function gateStatus(cls, text){
+  gateInfo.cls = cls; gateInfo.text = text;
+  var e = $('entryGateStatus'); e.className = 'lic ' + cls; e.textContent = text;
+  var b = $('licBadge'); if(b){ b.className = 'lic ' + cls; b.textContent = text; }
+}
+function gateHead(l){
+  var limited = l && typeof l.headcountLimit === 'number', free = l && l.valid && !limited, left = limited ? Math.max(l.headcountRemaining || 0, 0) : 0;
+  gateInfo.head = !l ? '' : free ? '此序號不限登入人數' : limited ? '此序號還可登入 ' + left + ' 人（上限 ' + l.headcountLimit + ' 人）' : '';
+  gateInfo.hcls = free || left > 0 ? 'ok' : 'bad';
+  var g = $('entryGateHeadcount'); g.textContent = l && l.reason === 'headcount_exceeded' ? gateInfo.head : '';
+  var b = $('headcountBadge'); if(b){ b.className = 'lic ' + gateInfo.hcls; b.textContent = gateInfo.head; }
+}
+function checkLicense(serial, attempt, renew){
+  attempt = attempt || 1;
+  var ctl = window.AbortController ? new AbortController() : null, tm = ctl && setTimeout(function(){ ctl.abort(); }, 20000);
+  // Apps Script 不回應 OPTIONS 預檢，所以不設 Content-Type
+  return fetch(LICENSE_CHECK_URL, {method:'POST', body:JSON.stringify({serial:serial, clientId:clientId(), renew:!!renew}), signal:ctl ? ctl.signal : undefined}).catch(function(){
+    throw new Error(REASON_LABEL.network_error);
+  }).then(function(r){
+    clearTimeout(tm);
+    if(!r.ok) throw new Error(REASON_LABEL.server_error);
+    return r.text();
+  }).then(function(t){
+    var d; try{ d = JSON.parse(t); }catch(e){ d = null; }
+    if(!d || typeof d.valid !== 'boolean'){
+      if(attempt < 3) return checkLicense(serial, attempt + 1, renew);
+      throw new Error(REASON_LABEL.server_error);
+    }
+    return d;
+  });
+}
+function gateDays(l){
+  if(!l.expiresAt) return '序號有效';
+  return '序號有效，還可以用 ' + Math.max(Math.ceil((new Date(l.expiresAt) - new Date(Date.now())) / 86400000), 0) + ' 天';
+}
+function gateUnlock(l){
+  gateStatus('ok', '✓ ' + gateDays(l)); gateHead(l);
+  $('entryGate').classList.add('hidden');
+  var first = !gateOpen; gateOpen = true;
+  if(first) render();
+}
+function gateLock(text, l){
+  gateOpen = false; clearTimeout(pollT); pollT = null;
+  if(alarmId) setAlarm(null);
+  gateStatus('bad', '✗ ' + text); gateHead(l && l.reason === 'headcount_exceeded' ? l : null);
+  $('entryGate').classList.remove('hidden');
+}
+function gateRun(serial, renew){
+  if(!serial){ gateLock(REASON_LABEL.missing_serial); return Promise.resolve(); }
+  return checkLicense(serial, 1, renew).then(function(l){
+    if(l.valid) gateUnlock(l);
+    else if(l.reason === 'server_error' && gateOpen) return;
+    else gateLock(REASON_LABEL[l.reason] || l.message || '序號驗證失敗', l);
+  }).catch(function(e){ if(!gateOpen) gateLock(e.message); });
+}
+function gateRenew(){ var s = lsGet(SERIAL_KEY); if(s && gateOpen) gateRun(s, true); }
+function gateRelease(serial){
+  if(!serial || !navigator.sendBeacon) return;
+  try{ navigator.sendBeacon(LICENSE_CHECK_URL, new Blob([JSON.stringify({serial:serial, clientId:clientId(), release:true})], {type:'text/plain'})); }catch(e){}
+}
+function gateLogout(){
+  gateRelease(lsGet(SERIAL_KEY)); lsDel(SERIAL_KEY);
+  $('entryGateSerial').value = ''; gateLock('已登出，請輸入登入序號');
+  location.hash = '#home';
+}
+function initGate(){
+  var input = $('entryGateSerial'), btn = $('btnEntryGateConfirm');
+  btn.onclick = function(){ var s = input.value.trim(); lsSet(SERIAL_KEY, s); gateStatus('', '驗證中…'); gateRun(s, false); };
+  input.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); btn.click(); } });
+  input.value = lsGet(SERIAL_KEY) || '';
+  if(input.value){ gateStatus('', '驗證中…'); gateRun(input.value, false); }
+  setInterval(gateRenew, RECHECK_MS);
+  window.addEventListener('pagehide', function(){ gateRelease(lsGet(SERIAL_KEY)); });   // 送不出去也沒關係，後端 40 分鐘逾時兜底
+}
+
 window.addEventListener('hashchange', render);
 window._nbh = {judge:judge, nextDelay:nextDelay, tripIn:tripIn, busesNow:busesNow, setEtas:function(e){ etas = e; etaAt = Date.now(); trips.forEach(function(t){ tripAt[t.id] = etaAt; tripKey[t.id] = busKey(t); }); drawCards(); checkAlarm(); }, findBuses:findBuses, search:search, loadIndex:loadIndex, trips:function(){ return trips; }, sayTrip:sayTrip};
-applySet(); initMarquee(); render();
+applySet(); initMarquee(); render(); initGate();
 if(!lsGet(WARN_KEY) && currentView() !== 'add') $('about').classList.add('show');
 </script>
 </body>
