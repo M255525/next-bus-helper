@@ -15,7 +15,7 @@
 
 ## 資料
 - **只有台北市＋新北市**：兩市開放資料免金鑰。其他縣市要 TDX 會員金鑰（免金鑰每 IP 每天只有 20 次，撐不了即時更新），目前未做。
-- `stops-data.json`（1.8MB，gzip 約 550KB，只有設定時才下載）：`tools/build_stops.py` 產生，`update-stops.yml` 每週一自動更新（只有日期不同不 commit）。格式見該檔開頭註解。
+- `stops-data.json`（1.8MB，gzip 約 550KB，只有設定時才下載）：`tools/build_stops.py` 產生，`update-stops.yml` 每週一自動更新（只有日期不同不 commit）。格式見該檔開頭註解。新北 API 偶爾回不完整，`build_stops.py` 資料量檢查會拒絕覆寫，重跑即可。
 - 到站：`/eta?t=<台北StopID>&n=<新北StopID>`。台北讀 `GetEstimateTime.gz`（JSON），新北讀資料集 `07f7ccb3…` 的 CSV。Worker 用 `indexOf` 取值、不 parse 整包（免費方案 CPU 限制），不是開放代理。**白名單 `ALLOWED` 在伺服器端強制**：Origin 不符（含沒帶 Origin）一律 403、不抓上游，所以 curl 測試要加 `-H "Origin: https://m255525.github.io"`。改埠號或換網域要同步改 `ALLOWED` 並重新 deploy，否則畫面會一直「暫時查不到」。Origin 可被非瀏覽器偽造，這層只擋別的網站盜用與隨手呼叫。
 - 秒數：>=0 預估；-1 尚未發車；-2 交管不停靠；-3 末班已過；-4 今日未營運。台北與新北的 StopID／RouteID 不重疊。
 
@@ -25,7 +25,8 @@
 - `nearSpots()`：對向站牌常叫別的名字（例如重慶幹線往天母不停「臺北車站」，要到中華路北站），所以回程、找不到同名站時放寬 500m；這一站沒有直達時列出附近有直達的上車站。
 - `judge(trip)`：選「走得到還趕得上」的最快一班，全部趕不上時顯示最快一班＋「不用跑」。測試掛鉤 `window._nbh`（`setEtas` 可注入秒數）。
 - 更新頻率 `nextDelay()`（省 Worker 呼叫次數）：離該出門 15 分鐘內、等提醒、查詢失敗＝30 秒；15～30 分＝60 秒；30 分以上＝2 分；還沒發車＝60 秒；今天沒車＝5 分。多趟取最短。`keep` 隨間隔放寬，否則間隔超過 90 秒會誤顯示「暫時查不到」。Worker 內的快取不會減少計費次數，只有前端少呼叫才算。
-- 自動更新時段 `S.schedOn`／`S.week`（索引＝`getDay()`，`{on,a,b}`，預設關閉＝全天）：時段外 `tick()` 不呼叫 Worker，但打開畫面、回到畫面、再看一次仍查一次，資料過期顯示「現在沒有更新」；🔔 等待中不受時段限制。時段開始時由 5 秒的 `setInterval` 自動接回。只存本機，不隨分享連結傳送。
+- 自動更新時段（`#sched=<tripId>`，`vSched()`）：每一趟自己的 `t.week`（索引＝`getDay()`，`{on,a,b}`，沒有＝全天），隨分享連結傳送。自動輪詢 `poll(true)` 只查 `live()` 的趟次；打開畫面、再看一次查全部；🔔 那趟不受時段限制。新鮮度看 `tripAt[t.id]`，不是全域。時段開始時由 5 秒 `setInterval` 比對 `liveKey` 接回。
+- 班次對照：`stops-data.json` 的 `r[5]`（首末班＋班距，平日／假日，依方向）。**首末班是起站時間**，判斷「這段時間有車」放寬 90 分鐘，「依班次帶入」末班＋1 小時。不用 `GetTimeTable`：不分去返程且多數路線不完整（617 只列晚上 3 班）；新北沒有時刻表。國定假日資料沒有，週六日算假日。
 - 🔔 時間到叫我：網頁不能背景執行，畫面要開著（Wake Lock 防休眠）。
 - 分享連結 `?openExternalBrowser=1#add=<base64url>`：`openExternalBrowser` 讓 LINE 改用手機瀏覽器開，資料才會留在瀏覽器；內容在 `parseAdd()` 驗證。
 - 儲存鍵 `nbh.trips`、`nbh.settings`、`nbh.fold`、`nbh.warnSeen`、`nbh.marquee`。
