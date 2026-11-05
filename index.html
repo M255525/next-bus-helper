@@ -329,7 +329,7 @@ function nextDelay(){
   var d = 300000;
   trips.filter(live).forEach(function(t){
     var j = judge(t), w;
-    if(j.none) w = j.word === '今天沒車了' || j.word === '今天沒開車' ? 300000 : j.word === '還沒發車' ? 60000 : POLL;
+    if(j.none) w = j.word === '今天沒車了' || j.word === '今天沒開車' ? 300000 : POLL;
     else { var s = j.catchable ? j.sec - (t.walk || 0) * 60 : 0; w = s > 1800 ? 120000 : s > 900 ? 60000 : POLL; }
     d = Math.min(d, w);
   });
@@ -353,8 +353,8 @@ function judge(t){
       var srcDown = bs.some(function(b){ return down[b.c]; });
       return {none:true, word:'暫時查不到', hint:srcDown ? '請看站牌，或等一下再看' : '站牌資料可能換了，請家人重新設定這一趟', cls:'miss'};
     }
-    var w = codes.indexOf(-1) >= 0 ? ['還沒發車', '車還在總站，時間未定'] : codes.indexOf(-2) >= 0 ? ['今天不停這站', '交通管制，請看站牌公告'] : codes.indexOf(-4) >= 0 ? ['今天沒開車', '請改搭別的車'] : ['今天沒車了', '末班車已經過了'];
-    return {none:true, word:w[0], hint:w[1], cls:w[0] === '還沒發車' ? '' : 'miss'};
+    var w = codes.indexOf(-1) >= 0 ? ['時間未定', '車可能已經開了，還算不出到站時間，請留意站牌'] : codes.indexOf(-2) >= 0 ? ['今天不停這站', '交通管制，請看站牌公告'] : codes.indexOf(-4) >= 0 ? ['今天沒開車', '請改搭別的車'] : ['今天沒車了', '末班車已經過了'];
+    return {none:true, word:w[0], hint:w[1], cls:w[0] === '時間未定' ? '' : 'miss'};
   }
   var hit = null; for(var i = 0; i < run.length; i++){ if(run[i].v >= walk){ hit = run[i]; break; } }
   var x = hit || run[0], o = {bus:x.b, sec:x.v, catchable:!!hit, cls:''};
