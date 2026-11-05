@@ -249,10 +249,10 @@ function findBuses(a, b){
 }
 
 /* ---------- 到站時間 ---------- */
-var etas = {}, etaAt = 0, tripAt = {}, tripKey = {}, tpAt = null, pollT = null, fetching = false, down = {}, pollBad = false, keep = KEEP, liveKey = '';
+var etas = {}, etaAt = 0, tripAt = {}, tripKey = {}, tpAt = null, pollT = null, fetching = false, down = {}, pollBad = false, keep = KEEP, liveKey = '', drawnDay = 0;
 /* 自動更新時段：每一趟自己的 t.week[getDay()] = {on,a,b,a2?,b2?,x?}，沒有 t.week＝全天。
    a2/b2＝第二段時間；x＝當天不看的路線（busK 字串），沒有＝全部都看。結束時間不晚於開始＝跨到隔天，跨夜那段沿用開始那天的路線。
-   時段外不自動查這一趟；打開畫面、按再看一次仍會全部查一次；開著提醒的那一趟不受時段限制。 */
+   時段外這一趟完全不呼叫 Worker：打開畫面、再看一次、提醒都不查，畫面只顯示下次更新時間（使用者要求省 Cloudflare 次數）。 */
 function hm(x){ var p = String(x).split(':'); return +p[0] * 60 + +p[1]; }
 function busK(b){ return b.r + '|' + b.h; }
 function dayWins(c){ return c.a2 ? [[c.a, c.b], [c.a2, c.b2]] : [[c.a, c.b]]; }
@@ -277,18 +277,29 @@ function busesNow(t, now){   // 這一刻要查、要判斷的公車
   return o;
 }
 function busKey(t){ return busesNow(t).map(function(b){ return b.c + b.s; }).join(); }
-function live(t){ return alarmId === t.id || tripIn(t); }
+function live(t){ return tripIn(t); }
+function nextWin(t){   // 下次開始更新的時間文字
+  var now = new Date(Date.now()), d = now.getDay(), m = now.getHours() * 60 + now.getMinutes();
+  for(var k = 0; k <= 7; k++){
+    var i = (d + k) % 7, c = t.week[i]; if(!c.on) continue;
+    var st = dayWins(c).map(function(w){ return hm(w[0]); }).sort(function(x, y){ return x - y; }).filter(function(x){ return k > 0 || x > m; });
+    if(st.length) return (k === 0 ? '今天' : k === 1 ? '明天' : '週' + '日一二三四五六'[i]) + ' ' + hhmm(st[0]);
+  }
+  return '';
+}
 function liveIds(){ return trips.filter(live).map(function(t){ return t.id + ':' + busKey(t); }).join(';'); }
 function paused(){ return !trips.some(live); }
-function tick(){ if(paused()) pollT = null; else poll(true); }
+function tick(){ if(paused()) pollT = null; else poll(); }
 function chunk(list, n){ var o = []; for(var i = 0; i < list.length; i += n) o.push(list.slice(i, i + n)); return o; }
-function poll(auto){
+function poll(){
   clearTimeout(pollT); pollT = null;
   if(currentView() !== 'home' || document.hidden || !trips.length) return Promise.resolve();
+  var list = trips.filter(live);
+  liveKey = liveIds();
+  if(!list.length){ drawCards(); return Promise.resolve(); }
   pollT = setTimeout(tick, POLL);
   if(fetching) return Promise.resolve();
-  var seen = {}, all = [], list = auto === true ? trips.filter(live) : trips;
-  liveKey = liveIds();
+  var seen = {}, all = [];
   var qk = {}; list.forEach(function(t){ qk[t.id] = busKey(t); });
   list.forEach(function(t){ busesNow(t).forEach(function(b){ var k = b.c + b.s; if(!seen[k]){ seen[k] = 1; all.push(b); } }); });
   fetching = true;
@@ -329,9 +340,9 @@ function fresh(t){ var a = seenAt(t); return a && Date.now() - a < keep; }
 /* 算出一趟要顯示什麼。回傳 {bus, sec, code, hint, cls, say} */
 function judge(t){
   var walk = (t.walk || 0) * 60;
+  if(!live(t)){ var nx = nextWin(t); return {none:true, word:'現在不更新', hint:nx ? '下次更新：' + nx : '這一趟沒有設定更新的日子', cls:''}; }
   if(!fresh(t)){
     var at = seenAt(t);
-    if(tripAt[t.id] && !live(t) && !pollBad) return {none:true, word:'現在沒有更新', hint:'要看最新時間，請按下面的「再看一次」', cls:''};
     return {none:true, word:at ? '暫時查不到' : '查詢中…', hint:at ? '請看站牌，或等一下再看' : '', cls:''};
   }
   var run = [], codes = [], bs = busesNow(t);
@@ -390,6 +401,11 @@ function setAlarm(id){
   if(id){ try{ actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); }catch(e){} speak('好，時間到我會叫您。請不要關掉畫面。'); poll(); }
   drawCards();
 }
+function endAlarm(){   // 提醒等到一半時段結束：不再查詢，要明確告訴長輩，不能無聲失效
+  var t = trips.filter(function(x){ return x.id === alarmId; })[0];
+  if(!t || live(t)) return;
+  setAlarm(null); toast('設定的時間結束了，提醒已關閉'); speak('設定的時間結束了，提醒已關閉，請自己看時間。');
+}
 function checkAlarm(){
   if(!alarmId) return;
   var t = trips.filter(function(x){ return x.id === alarmId; })[0]; if(!t){ setAlarm(null); return; }
@@ -436,13 +452,13 @@ function vHome(){
     return;
   }
   $('view').innerHTML = '<div id="cards"></div><p class="upd" id="upd"></p><div class="stack"><button class="btn" type="button" id="again">🔄 再看一次</button><button class="btn" type="button" id="more">＋ 再加一個常去的地方</button></div>' + foot();
-  $('again').onclick = function(){ toast('查詢中…'); poll(); };
+  $('again').onclick = function(){ if(paused()){ toast('現在不是您設定的時間，不會查詢'); return; } toast('查詢中…'); poll(); };
   $('more').onclick = function(){ F = {}; go('from'); };
   $('cards').addEventListener('click', function(e){
     var b = e.target.closest('button'); if(!b) return;
     var t = trips.filter(function(x){ return x.id === b.dataset.id; })[0]; if(!t) return;
     if(b.dataset.a === 'say') speak(sayTrip(t));
-    if(b.dataset.a === 'alarm') setAlarm(alarmId === t.id ? null : t.id);
+    if(b.dataset.a === 'alarm'){ if(alarmId !== t.id && !live(t)){ toast('現在不是您設定的時間，不能用提醒'); return; } setAlarm(alarmId === t.id ? null : t.id); }
   });
   drawCards(); poll();
 }
@@ -465,12 +481,12 @@ function drawCards(){
 }
 function drawUpd(){
   var u = $('upd'); if(!u) return;
-  if(!etaAt){ u.textContent = ''; return; }
+  if(!etaAt){ u.textContent = trips.length && paused() ? '現在不是您設定的時間，不會查詢' : ''; return; }
   var s = Math.round((Date.now() - etaAt) / 1000), m = s < 10 ? '剛剛更新' : s < 60 ? s + ' 秒前更新' : Math.floor(s / 60) + ' 分鐘前更新';
   var old = false; if(tpAt){ var d = new Date(tpAt.replace(/\//g, '-').replace(' ', 'T') + '+08:00'); old = etaAt - d.getTime() > 300000; }
-  u.textContent = m + (paused() ? '・現在不是自動更新時段' : '・會自動更新') + (old ? '・資料來源可能延遲' : '');
+  u.textContent = m + (paused() ? '・現在不是您設定的時間，不會查詢' : '・會自動更新') + (old ? '・資料來源可能延遲' : '');
 }
-setInterval(function(){ if(currentView() === 'home'){ drawUpd(); if(trips.some(function(t){ return tripAt[t.id] && !fresh(t); })) drawCards(); var k = liveIds(); if(k && !fetching && !document.hidden && (!pollT || k !== liveKey)) poll(true); } }, 5000);
+setInterval(function(){ if(currentView() === 'home'){ drawUpd(); if(trips.some(function(t){ return tripAt[t.id] && !fresh(t); })) drawCards(); endAlarm(); var k = liveIds(), dn = new Date(Date.now()).getDate(); if(dn !== drawnDay){ drawnDay = dn; drawCards(); } if(!k && k !== liveKey){ liveKey = k; drawCards(); } if(k && !fetching && !document.hidden && (!pollT || k !== liveKey)) poll(); } }, 5000);
 document.addEventListener('visibilitychange', function(){ if(!document.hidden && currentView() === 'home') poll(); });
 
 function demo(){
@@ -707,7 +723,7 @@ function vSched(){
   $('view').innerHTML = '<button class="linkbtn" type="button" id="back">← 回到常用設定</button><h2 class="q">' + esc(t.name) + '</h2><p class="sub">自動更新時段</p>' +
     '<div class="wk-list">' + busList(t) + '</div><p class="wk-off">班次時間是起站發車時間，到您這站會再晚一些。週六日算假日，國定假日請看站牌公告。</p>' +
     '<div class="seg" style="margin:.6rem 0"><button class="btn" type="button" data-sm="0" aria-pressed="' + !t.week + '">全天</button><button class="btn" type="button" data-sm="1" aria-pressed="' + !!t.week + '">依星期自訂</button></div>' +
-    (t.week ? '<button class="btn" type="button" id="wkFill" style="margin-bottom:.6rem">依公車班次帶入時間</button><div class="wk-days">' + rows + '</div><p class="wk-off" style="margin-top:.6rem">時段內只查當天勾選的車。結束時間比開始早，代表跨到隔天，跨過午夜那段照開始那天勾選的車。其他時間打開畫面或按「再看一次」一樣查得到。按了「🔔 時間到叫我」會一直更新到提醒結束。</p><button class="btn" type="button" id="wkAll" style="margin-top:.5rem">把週一的設定套用到每天</button>' : '');
+    (t.week ? '<button class="btn" type="button" id="wkFill" style="margin-bottom:.6rem">依公車班次帶入時間</button><div class="wk-days">' + rows + '</div><p class="wk-off" style="margin-top:.6rem">時段內只查當天勾選的車。結束時間比開始早，代表跨到隔天，跨過午夜那段照開始那天勾選的車。<b>其他時間完全不查詢</b>：打開畫面、按「再看一次」都不會更新，「🔔 時間到叫我」也不能用，畫面只顯示下次更新時間。想隨時都能看，請選「全天」。</p><button class="btn" type="button" id="wkAll" style="margin-top:.5rem">把週一的設定套用到每天</button>' : '');
   function again(){ saveTrips(); vSched(); bindCommon(); }
   $('back').onclick = function(){ go('settings'); };
   document.querySelectorAll('[data-sm]').forEach(function(b){ b.onclick = function(){
@@ -766,7 +782,7 @@ function vSettings(){
     sec('size', '字體大小', nameOf(SIZES, S.size), seg('size', SIZES)) +
     sec('mode', '畫面顏色', nameOf(MODES, S.mode), seg('mode', MODES)) +
     sec('rate', '朗讀速度', nameOf(RATES, S.rate), seg('rate', RATES)) +
-    sec('sched', '自動更新時段', custom ? custom + ' 個地方有自訂' : '全天', '<p>每個地方可以依星期設定幾點到幾點才自動更新，並對照這一趟公車的班次。</p>' + schedRows) +
+    sec('sched', '自動更新時段', custom ? custom + ' 個地方有自訂' : '全天', '<p>每個地方可以依星期設定幾點到幾點才查公車，其他時間不查，並對照這一趟公車的班次。</p>' + schedRows) +
     sec('trips', '我常去的地方', trips.length + ' 個', rows + '<button class="btn" type="button" id="addT">＋ 新增</button>') +
     sec('send', '傳給家人', '', '<p>把這裡設好的地方全部傳到另一支手機。家人可以先幫長輩設好，再用 LINE 傳過去。</p><button class="btn" type="button" id="sendAll"' + (trips.length ? '' : ' disabled') + '>💬 用 LINE 傳</button><button class="btn" type="button" id="copyAll"' + (trips.length ? '' : ' disabled') + '>複製連結</button>') +
     sec('data', '清除資料', '', '<button class="btn danger" type="button" id="clr">清除這支手機的全部資料</button>') +
