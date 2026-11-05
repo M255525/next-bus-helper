@@ -234,7 +234,7 @@ function findBuses(a, b){
 }
 
 /* ---------- 到站時間 ---------- */
-var etas = {}, etaAt = 0, tpAt = null, pollT = null, fetching = false, down = {};
+var etas = {}, etaAt = 0, tpAt = null, pollT = null, fetching = false, down = {}, pollBad = false, keep = KEEP;
 function chunk(list, n){ var o = []; for(var i = 0; i < list.length; i += n) o.push(list.slice(i, i + n)); return o; }
 function poll(){
   clearTimeout(pollT);
@@ -252,9 +252,28 @@ function poll(){
     var e = {}, bad = false, dn = {};
     rs.forEach(function(d){ if(!d.ok) bad = true; Object.assign(e, d.r || {}); if(d.tpAt) tpAt = d.tpAt; (d.miss || []).forEach(function(c){ dn[c] = 1; }); });
     if(!bad || Object.keys(e).length){ etas = e; etaAt = Date.now(); down = dn; }
-  }).catch(function(){}).then(function(){ fetching = false; drawCards(); checkAlarm(); });
+    pollBad = bad || Object.keys(dn).length > 0;
+  }).catch(function(){ pollBad = true; }).then(function(){
+    fetching = false;
+    var d = nextDelay(); keep = Math.max(KEEP, d + 60000);
+    clearTimeout(pollT);
+    if(currentView() === 'home' && !document.hidden && trips.length) pollT = setTimeout(poll, d);
+    drawCards(); checkAlarm();
+  });
 }
-function fresh(){ return etaAt && Date.now() - etaAt < KEEP; }
+/* 省 Worker 呼叫次數：車還遠才放慢。等提醒、查詢失敗、該出門前 15 分鐘內一律維持 30 秒。 */
+function nextDelay(){
+  if(alarmId || pollBad || !fresh()) return POLL;
+  var d = 300000;
+  trips.forEach(function(t){
+    var j = judge(t), w;
+    if(j.none) w = j.word === '今天沒車了' || j.word === '今天沒開車' ? 300000 : j.word === '還沒發車' ? 60000 : POLL;
+    else { var s = j.catchable ? j.sec - (t.walk || 0) * 60 : 0; w = s > 1800 ? 120000 : s > 900 ? 60000 : POLL; }
+    d = Math.min(d, w);
+  });
+  return d;
+}
+function fresh(){ return etaAt && Date.now() - etaAt < keep; }
 /* 算出一趟要顯示什麼。回傳 {bus, sec, code, hint, cls, say} */
 function judge(t){
   var walk = (t.walk || 0) * 60;
@@ -312,7 +331,7 @@ function beep(){
 }
 function setAlarm(id){
   alarmId = id; keepAwake(!!id);
-  if(id){ try{ actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); }catch(e){} speak('好，時間到我會叫您。請不要關掉畫面。'); }
+  if(id){ try{ actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); }catch(e){} speak('好，時間到我會叫您。請不要關掉畫面。'); poll(); }
   drawCards();
 }
 function checkAlarm(){
@@ -393,7 +412,7 @@ function drawUpd(){
   if(!etaAt){ u.textContent = ''; return; }
   var s = Math.round((Date.now() - etaAt) / 1000), m = s < 10 ? '剛剛更新' : s < 60 ? s + ' 秒前更新' : Math.floor(s / 60) + ' 分鐘前更新';
   var old = false; if(tpAt){ var d = new Date(tpAt.replace(/\//g, '-').replace(' ', 'T') + '+08:00'); old = Date.now() - d.getTime() > 300000; }
-  u.textContent = m + '・每 30 秒自動更新' + (old ? '・資料來源可能延遲' : '');
+  u.textContent = m + '・會自動更新' + (old ? '・資料來源可能延遲' : '');
 }
 setInterval(function(){ if(currentView() === 'home'){ drawUpd(); if(etaAt && !fresh()) drawCards(); } }, 5000);
 document.addEventListener('visibilitychange', function(){ if(!document.hidden && currentView() === 'home') poll(); });
@@ -630,7 +649,7 @@ function bindInstall(){
 if('serviceWorker' in navigator && location.protocol !== 'file:'){ window.addEventListener('load', function(){ navigator.serviceWorker.register('service-worker.js').catch(function(){}); }); }
 
 window.addEventListener('hashchange', render);
-window._nbh = {judge:judge, setEtas:function(e){ etas = e; etaAt = Date.now(); drawCards(); checkAlarm(); }, findBuses:findBuses, search:search, loadIndex:loadIndex, trips:function(){ return trips; }, sayTrip:sayTrip};
+window._nbh = {judge:judge, nextDelay:nextDelay, setEtas:function(e){ etas = e; etaAt = Date.now(); drawCards(); checkAlarm(); }, findBuses:findBuses, search:search, loadIndex:loadIndex, trips:function(){ return trips; }, sayTrip:sayTrip};
 applySet(); initMarquee(); render();
 if(!lsGet(WARN_KEY) && currentView() !== 'add') $('about').classList.add('show');
 </script>
