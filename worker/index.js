@@ -6,6 +6,9 @@
  * GET /eta?t=187095,187096&n=213893   t＝台北資料 StopID，n＝新北資料 StopID，合計最多 30 個
  * 回應：{ ok, r:{ "187095":245, "213893":-1 }, tpAt:"2026/11/04 22:40:05"|null, miss:["t"] }
  * 秒數意義：>=0 預估秒數；-1 尚未發車；-2 交管不停靠；-3 末班已過；-4 今日未營運。查不到的 ID 不會出現在 r。
+ *
+ * 白名單：Origin 不在 ALLOWED（含沒帶 Origin，例如 curl、直接開網址）一律回 403，不會去抓上游。
+ * 手動測試要自己帶標頭：curl -H "Origin: https://m255525.github.io" ...
  */
 const ALLOWED = ['https://m255525.github.io', 'http://localhost:8852', 'http://127.0.0.1:8852'];
 const TP_URL = 'https://tcgbusfs.blob.core.windows.net/blobbus/GetEstimateTime.gz';
@@ -65,6 +68,7 @@ function ids(s) {
 export default {
   async fetch(request) {
     const url = new URL(request.url), origin = request.headers.get('Origin') || '';
+    if (!ALLOWED.includes(origin)) return json({ ok: false, error: 'forbidden' }, 403, origin);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
     if (request.method !== 'GET' || url.pathname !== '/eta') return json({ ok: false, error: 'not found' }, 404, origin);
     const t = ids(url.searchParams.get('t')), n = ids(url.searchParams.get('n'));

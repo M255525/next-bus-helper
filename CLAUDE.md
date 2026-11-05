@@ -16,7 +16,7 @@
 ## 資料
 - **只有台北市＋新北市**：兩市開放資料免金鑰。其他縣市要 TDX 會員金鑰（免金鑰每 IP 每天只有 20 次，撐不了即時更新），目前未做。
 - `stops-data.json`（1.8MB，gzip 約 550KB，只有設定時才下載）：`tools/build_stops.py` 產生，`update-stops.yml` 每週一自動更新（只有日期不同不 commit）。格式見該檔開頭註解。
-- 到站：`/eta?t=<台北StopID>&n=<新北StopID>`。台北讀 `GetEstimateTime.gz`（JSON），新北讀資料集 `07f7ccb3…` 的 CSV。Worker 用 `indexOf` 取值、不 parse 整包（免費方案 CPU 限制），只允許 `ALLOWED` 來源，不是開放代理。改埠號要同步改 `ALLOWED`。
+- 到站：`/eta?t=<台北StopID>&n=<新北StopID>`。台北讀 `GetEstimateTime.gz`（JSON），新北讀資料集 `07f7ccb3…` 的 CSV。Worker 用 `indexOf` 取值、不 parse 整包（免費方案 CPU 限制），不是開放代理。**白名單 `ALLOWED` 在伺服器端強制**：Origin 不符（含沒帶 Origin）一律 403、不抓上游，所以 curl 測試要加 `-H "Origin: https://m255525.github.io"`。改埠號或換網域要同步改 `ALLOWED` 並重新 deploy，否則畫面會一直「暫時查不到」。Origin 可被非瀏覽器偽造，這層只擋別的網站盜用與隨手呼叫。
 - 秒數：>=0 預估；-1 尚未發車；-2 交管不停靠；-3 末班已過；-4 今日未營運。台北與新北的 StopID／RouteID 不重疊。
 
 ## 架構重點
