@@ -206,7 +206,7 @@ body:has(#entryGate:not(.hidden)){overflow:hidden}
 var PREFIX = 'nbh.', TRIPS_KEY = PREFIX + 'trips', SET_KEY = PREFIX + 'settings', FOLD_KEY = PREFIX + 'fold', WARN_KEY = PREFIX + 'warnSeen';
 var ETA_URL = 'https://next-bus-eta.content-workflow.workers.dev/eta';
 var BADGE = 'https://visitor-badge.laobi.icu/badge?page_id=m255525.nextbushelper';
-var POLL = 30000, KEEP = 90000, MAX_BUS = 12, FAR = 3600, BACK = 1800000;
+var POLL = 30000, KEEP = 90000, MAX_BUS = 12, FAR = 3600, BACK = 1800000, STUCK = 180000;
 var $ = function(id){ return document.getElementById(id); };
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
@@ -280,7 +280,13 @@ function findBuses(a, b){
 
 /* ---------- 到站時間 ---------- */
 var gateOpen = false;   // 登入序號驗證通過才 true；false 時絕不呼叫 Worker
-var etas = {}, etaAt = 0, tripAt = {}, tripKey = {}, tpAt = null, pollT = null, fetching = false, down = {}, pollBad = false, keep = KEEP, liveKey = '', drawnDay = 0, restKey = '', restAt = 0, restDone = false;
+var etas = {}, etaAt = 0, tripAt = {}, tripKey = {}, tpAt = null, pollT = null, fetching = false, down = {}, pollBad = false, keep = KEEP, liveKey = '', drawnDay = 0, restKey = '', restAt = 0, restDone = false, ntFeed = loadFeed();
+/* 新北資料停住（2026-11-05 實測整份檔案 13 分鐘沒變，查詢仍成功）：Worker 回檔案指紋 ntSig，超過 STUCK 沒變就不顯示新北的秒數。
+   存 localStorage，重新打開畫面不用再等 3 分鐘。末班過後（-3 等）檔案本來就不動，所以只擋 -1 和秒數。 */
+function loadFeed(){ try{ return JSON.parse(lsGet('nbh.ntSig')) || {}; }catch(e){ return {}; } }
+function seeFeed(s){ if(s && s !== ntFeed.sig){ ntFeed = {sig:s, at:Date.now()}; lsSet('nbh.ntSig', JSON.stringify(ntFeed)); } }
+function feedStuck(){ return !!ntFeed.at && Date.now() - ntFeed.at >= STUCK; }
+function stuckBus(b){ return b.c === 'n' && etas[b.s] >= -1 && feedStuck(); }
 /* 自動更新時段：每一趟自己的 t.week[getDay()] = {on,a,b,a2?,b2?,x?}，沒有 t.week＝全天。
    a2/b2＝第二段時間；x＝當天不看的路線（busK 字串），沒有＝全部都看。結束時間不晚於開始＝跨到隔天，跨夜那段沿用開始那天的路線。
    時段外這一趟完全不呼叫 Worker：打開畫面、再看一次、提醒都不查，畫面只顯示下次更新時間（使用者要求省 Cloudflare 次數）。 */
@@ -342,7 +348,7 @@ function poll(force){   // force＝使用者親手要查（再看一次、開提
     return fetch(u).then(function(r){ return r.json(); });
   })).then(function(rs){
     var e = {}, bad = false, dn = {};
-    rs.forEach(function(d){ if(!d.ok) bad = true; Object.assign(e, d.r || {}); if(d.tpAt) tpAt = d.tpAt; (d.miss || []).forEach(function(c){ dn[c] = 1; }); });
+    rs.forEach(function(d){ if(!d.ok) bad = true; Object.assign(e, d.r || {}); if(d.tpAt) tpAt = d.tpAt; seeFeed(d.ntSig); (d.miss || []).forEach(function(c){ dn[c] = 1; }); });
     if(!bad || Object.keys(e).length){
       all.forEach(function(b){ delete etas[b.s]; }); Object.assign(etas, e);
       etaAt = Date.now(); list.forEach(function(t){ tripAt[t.id] = etaAt; tripKey[t.id] = qk[t.id]; }); down = dn;
@@ -363,7 +369,7 @@ function nextDelay(){
   var d = 300000;
   trips.filter(live).forEach(function(t){
     var j = judge(t), w;
-    if(j.none) w = j.word === '今天沒車了' || j.word === '今天沒開車' ? 300000 : POLL;
+    if(j.none) w = j.stuck || j.word === '今天沒車了' || j.word === '今天沒開車' ? 300000 : POLL;
     else { var s = j.catchable ? j.sec - (t.walk || 0) * 60 : 0; w = s > 1800 ? 120000 : s > 900 ? 60000 : POLL; }
     d = Math.min(d, w);
   });
@@ -395,10 +401,11 @@ function judge(t){
     var at = seenAt(t);
     return {none:true, word:at ? '暫時查不到' : '查詢中…', hint:at ? '請看站牌，或等一下再看' : '', cls:''};
   }
-  var run = [], codes = [], bs = busesNow(t);
-  bs.forEach(function(b){ var v = etas[b.s]; if(v == null) return; if(v >= 0) run.push({b:b, v:v}); else codes.push(v); });
+  var run = [], codes = [], bs = busesNow(t), stuck = false;
+  bs.forEach(function(b){ var v = etas[b.s]; if(v == null) return; if(stuckBus(b)){ stuck = true; return; } if(v >= 0) run.push({b:b, v:v}); else codes.push(v); });
   run.sort(function(x, y){ return x.v - y.v; });
   if(!run.length){
+    if(stuck) return {none:true, stuck:true, word:'資料沒更新', hint:'新北的到站資料暫時停住了，請看站牌', cls:'miss'};
     if(!codes.length){
       var srcDown = bs.some(function(b){ return down[b.c]; });
       return {none:true, word:'暫時查不到', hint:srcDown ? '請看站牌，或等一下再看' : '站牌資料可能換了，請家人重新設定這一趟', cls:'miss'};
@@ -537,7 +544,7 @@ function drawUpd(){
   if(!etaAt){ u.textContent = trips.length && paused() ? '現在不是您設定的時間，不會查詢' : ''; return; }
   var s = Math.round((Date.now() - etaAt) / 1000), m = s < 10 ? '剛剛更新' : s < 60 ? s + ' 秒前更新' : Math.floor(s / 60) + ' 分鐘前更新';
   var old = false; if(tpAt){ var d = new Date(tpAt.replace(/\//g, '-').replace(' ', 'T') + '+08:00'); old = etaAt - d.getTime() > 300000; }
-  u.textContent = m + (paused() ? '・現在不是您設定的時間，不會查詢' : resting() ? (restDone ? '・已停止更新' : '・車還很遠，已暫停自動更新') : '・會自動更新') + (old ? '・資料來源可能延遲' : '');
+  u.textContent = m + (paused() ? '・現在不是您設定的時間，不會查詢' : resting() ? (restDone ? '・已停止更新' : '・車還很遠，已暫停自動更新') : '・會自動更新') + (old ? '・資料來源可能延遲' : '') + (trips.some(function(t){ return live(t) && busesNow(t).some(stuckBus); }) ? '・新北資料 ' + Math.floor((Date.now() - ntFeed.at) / 60000) + ' 分鐘沒有變動' : '');
 }
 setInterval(function(){ if(currentView() === 'home'){ drawUpd(); if(trips.some(function(t){ return tripAt[t.id] && !fresh(t); })) drawCards(); endAlarm(); var k = liveIds(), dn = new Date(Date.now()).getDate(); if(dn !== drawnDay){ drawnDay = dn; drawCards(); } if(!k && k !== liveKey){ liveKey = k; drawCards(); } if(k && !fetching && !document.hidden && (!pollT || k !== liveKey)) poll(); } }, 5000);
 document.addEventListener('visibilitychange', function(){ if(!document.hidden && currentView() === 'home'){ if(restKey && restDone && Date.now() - restAt > BACK) restKey = ''; poll(); } });

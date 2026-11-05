@@ -44,8 +44,14 @@ async function load(which) {
   } else {
     text = await res.text();
   }
-  mem[which] = { at: now, text };
+  mem[which] = { at: now, text, sig: which === 'n' ? await digest(text) : null };
   return text;
+}
+/* 新北資料沒有時間欄位，資料停住時看不出來（2026-11-05 實測整份檔案 13 分鐘沒變）。
+   回傳檔案指紋讓前端判斷；狀態放前端，因為這裡的記憶體會隨 isolate 回收消失。 */
+async function digest(text) {
+  const d = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(text));
+  return [...new Uint8Array(d).slice(0, 8)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 function pickTp(text, id) {
   const key = '"StopID":' + id + ',"EstimateTime":"';
@@ -75,7 +81,7 @@ export default {
     if (!t.length && !n.length) return json({ ok: false, error: 'no ids' }, 400, origin);
     if (t.length + n.length > MAX_IDS) return json({ ok: false, error: 'too many ids' }, 400, origin);
     const r = {}, miss = [];
-    let tpAt = null;
+    let tpAt = null, ntSig = null;
     await Promise.all([
       t.length ? load('t').then((text) => {
         for (const id of t) { const v = pickTp(text, id); if (Number.isFinite(v)) r[id] = v; }
@@ -83,9 +89,10 @@ export default {
       }).catch(() => miss.push('t')) : null,
       n.length ? load('n').then((text) => {
         for (const id of n) { const v = pickNt(text, id); if (Number.isFinite(v)) r[id] = v; }
+        ntSig = mem.n.sig;
       }).catch(() => miss.push('n')) : null,
     ]);
     const ok = miss.length < (t.length ? 1 : 0) + (n.length ? 1 : 0);
-    return json({ ok, r, tpAt, miss }, ok ? 200 : 502, origin, { 'Cache-Control': 'public, max-age=15' });
+    return json({ ok, r, tpAt, ntSig, miss }, ok ? 200 : 502, origin, { 'Cache-Control': 'public, max-age=15' });
   },
 };
