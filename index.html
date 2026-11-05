@@ -710,16 +710,26 @@ function span(v, hol){   // 這天的營運分鐘 [首班, 末班]，末班過�
 function gap(x){ if(!x) return ''; var a = +x.slice(0, 2), b = +x.slice(2); return a === b || !b ? a + ' 分' : a + '～' + b + ' 分'; }
 function hhmm(m){ m = ((m % 1440) + 1440) % 1440; return ('0' + Math.floor(m / 60)).slice(-2) + ':' + ('0' + m % 60).slice(-2); }
 function defWeek(){ return [0, 1, 2, 3, 4, 5, 6].map(function(){ return {on:true, a:'06:00', b:'22:00'}; }); }
-function fillWeek(t){   // 依班次帶入：最早首班到最晚末班＋1 小時（末班是起站發車，到站會再晚一些）
+function dayFit(bus, i){   // 依班次算時段：最早首班到最晚末班＋1 小時（末班是起站發車，到站會再晚一些）
+  var sp = bus.map(function(b){ return span(svcOf(b), i === 0 || i === 6); }).filter(Boolean);
+  if(!sp.length) return null;
+  return {a:hhmm(Math.min.apply(null, sp.map(function(x){ return x[0]; }))), b:hhmm(Math.max.apply(null, sp.map(function(x){ return x[1]; })) + 60)};
+}
+function fillWeek(t){
   var n = 0;
   t.week.forEach(function(d, i){
-    var sp = dayBus(t, i).map(function(b){ return span(svcOf(b), i === 0 || i === 6); }).filter(Boolean);
-    if(!sp.length) return;
+    var f = dayFit(dayBus(t, i), i);
+    if(!f) return;
     delete d.a2; delete d.b2;
-    d.a = hhmm(Math.min.apply(null, sp.map(function(x){ return x[0]; })));
-    d.b = hhmm(Math.max.apply(null, sp.map(function(x){ return x[1]; })) + 60); n++;
+    d.a = f.a; d.b = f.b; n++;
   });
   return n;
+}
+/* 這天的時間是不是程式帶入的（不是家人親手改的）：是才跟著勾選的車更新，親手設的時段不能被蓋掉。
+   也比對「全部的車」：這個功能上線前勾過路線的人，時間還停在全部的車算出來的值。 */
+function autoDay(t, i){
+  var d = t.week[i];
+  return !d.a2 && [dayFit(dayBus(t, i), i), dayFit(t.b, i), {a:'06:00', b:'22:00'}].some(function(f){ return f && f.a === d.a && f.b === d.b; });
 }
 function dayLine(t, i){
   if(!IDX || !t.week[i].on) return '';
@@ -783,13 +793,17 @@ function vSched(){
   document.querySelectorAll('[data-w2add]').forEach(function(b){ b.onclick = function(){ var d = t.week[+b.dataset.w2add]; d.a2 = '16:00'; d.b2 = '19:00'; again(); }; });
   document.querySelectorAll('[data-w2del]').forEach(function(b){ b.onclick = function(){ var d = t.week[+b.dataset.w2del]; delete d.a2; delete d.b2; again(); }; });
   document.querySelectorAll('[data-wr]').forEach(function(b){ b.onclick = function(){
-    var d = t.week[+b.dataset.wr], k = b.dataset.rk, x = (d.x || []).slice(), at = x.indexOf(k);
+    var i = +b.dataset.wr, d = t.week[i], k = b.dataset.rk, x = (d.x || []).slice(), at = x.indexOf(k), auto = IDX && autoDay(t, i);
     if(at >= 0) x.splice(at, 1);
     else {
       x.push(k);
       if(!uniq.some(function(u){ return x.indexOf(busK(u)) < 0; })){ toast('至少要留一路車'); return; }
     }
     if(x.length) d.x = x; else delete d.x;
+    var f = auto && dayFit(dayBus(t, i), i);
+    if(!IDX) toast('班次還在載入，時間沒有跟著改');
+    else if(!auto) toast('這天的時間是您自己設的，所以沒有跟著改');
+    else if(f && (f.a !== d.a || f.b !== d.b)){ d.a = f.a; d.b = f.b; toast('時間已跟著勾選的車更新'); }
     again();
   }; });
   if($('wkAll')) $('wkAll').onclick = function(){
