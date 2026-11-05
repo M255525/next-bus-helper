@@ -425,7 +425,7 @@ function sayRoute(r){ return String(r).replace(/\d/g, function(d){ return '零�
 function sayTrip(t){
   var j = judge(t);
   if(j.none) return t.name + '。' + j.word + '。' + j.hint;
-  return t.name + '。' + sayRoute(j.bus.r) + '路，' + (j.min ? j.min + '分鐘後到' : '快到了') + '。' + j.hint;
+  return t.name + '。' + sayRoute(j.bus.r) + '路，' + (j.min ? j.min + '分鐘後到' : j.sec + '秒後到') + '。' + j.hint;
 }
 function speak(text){
   if(!('speechSynthesis' in window)){ toast('這支手機不支援朗讀'); return; }
@@ -462,9 +462,9 @@ function checkAlarm(){
   var j = judge(t); if(j.none || !j.catchable) return;
   var left = j.sec - (t.walk || 0) * 60;
   if(left > (t.walk ? 60 : 180)) return;
-  var m = sayRoute(j.bus.r) + '路' + (j.min ? '再' + j.min + '分鐘到' : '快到了');
+  var m = sayRoute(j.bus.r) + '路' + (j.min ? '再' + j.min + '分鐘到' : '再' + j.sec + '秒到');
   $('ringT').textContent = t.walk ? '該出門了！' : '車快到了！';
-  $('ringM').textContent = j.bus.r + ' ' + (j.min ? '再 ' + j.min + ' 分鐘到' : '快到了');
+  $('ringM').textContent = j.bus.r + ' ' + (j.min ? '再 ' + j.min + ' 分鐘到' : '再 ' + j.sec + ' 秒到');
   $('ring').classList.add('show');
   alarmId = null; keepAwake(false); beep(); if(navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]);
   setTimeout(function(){ speak($('ringT').textContent + m); }, 1300);
@@ -521,7 +521,7 @@ function drawCards(){
     if(j.none){ line = ''; big = '<div class="big word"><b>' + esc(j.word) + '</b></div>'; }
     else {
       line = '<div class="led-line"><span class="rt' + (String(j.bus.r).length > 6 ? ' long' : '') + '">' + esc(j.bus.r) + '</span><span class="hd">往 ' + esc(j.bus.h) + '</span></div>';
-      big = j.min ? '<div class="big"><b>' + j.min + '</b><i>分鐘</i></div>' : '<div class="big word"><b>快到了</b></div>';
+      big = '<div class="big"><b>' + (j.min || j.sec) + '</b><i>' + (j.min ? '分鐘' : '秒') + '</i></div>';
     }
     var on = alarmId === t.id;
     return '<article class="sign"><h2 class="sign-top">' + esc(t.name) + '</h2><div class="led">' + line + big + (j.hint ? '<p class="hint ' + j.cls + '">' + esc(j.hint) + '</p>' : '') + '</div>' +
