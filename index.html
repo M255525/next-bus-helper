@@ -206,7 +206,7 @@ body:has(#entryGate:not(.hidden)){overflow:hidden}
 var PREFIX = 'nbh.', TRIPS_KEY = PREFIX + 'trips', SET_KEY = PREFIX + 'settings', FOLD_KEY = PREFIX + 'fold', WARN_KEY = PREFIX + 'warnSeen';
 var ETA_URL = 'https://next-bus-eta.content-workflow.workers.dev/eta';
 var BADGE = 'https://visitor-badge.laobi.icu/badge?page_id=m255525.nextbushelper';
-var POLL = 30000, KEEP = 90000, MAX_BUS = 12, FAR = 3600;
+var POLL = 30000, KEEP = 90000, MAX_BUS = 12, FAR = 3600, BACK = 1800000;
 var $ = function(id){ return document.getElementById(id); };
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
@@ -280,7 +280,7 @@ function findBuses(a, b){
 
 /* ---------- 到站時間 ---------- */
 var gateOpen = false;   // 登入序號驗證通過才 true；false 時絕不呼叫 Worker
-var etas = {}, etaAt = 0, tripAt = {}, tripKey = {}, tpAt = null, pollT = null, fetching = false, down = {}, pollBad = false, keep = KEEP, liveKey = '', drawnDay = 0, restKey = '', restAt = 0;
+var etas = {}, etaAt = 0, tripAt = {}, tripKey = {}, tpAt = null, pollT = null, fetching = false, down = {}, pollBad = false, keep = KEEP, liveKey = '', drawnDay = 0, restKey = '', restAt = 0, restDone = false;
 /* 自動更新時段：每一趟自己的 t.week[getDay()] = {on,a,b,a2?,b2?,x?}，沒有 t.week＝全天。
    a2/b2＝第二段時間；x＝當天不看的路線（busK 字串），沒有＝全部都看。結束時間不晚於開始＝跨到隔天，跨夜那段沿用開始那天的路線。
    時段外這一趟完全不呼叫 Worker：打開畫面、再看一次、提醒都不查，畫面只顯示下次更新時間（使用者要求省 Cloudflare 次數）。 */
@@ -350,7 +350,7 @@ function poll(force){   // force＝使用者親手要查（再看一次、開提
     pollBad = bad || Object.keys(dn).length > 0;
   }).catch(function(){ pollBad = true; }).then(function(){
     fetching = false;
-    if(allFar()){ restKey = liveIds(); restAt = etaAt; }
+    if(allFar()){ restKey = liveIds(); restAt = etaAt; restDone = false; }
     var d = nextDelay(); keep = Math.max(KEEP, d + 60000);
     clearTimeout(pollT); pollT = null;
     if(currentView() === 'home' && !document.hidden && trips.length && !paused() && !restKey) pollT = setTimeout(tick, d);
@@ -375,6 +375,14 @@ function nextDelay(){
 function isFar(t){ var j = judge(t); return !j.none && j.catchable && j.sec > FAR && !busesNow(t).some(function(b){ return etas[b.s] === -1; }); }
 function allFar(){ var l = trips.filter(live); return !alarmId && !pollBad && l.length > 0 && l.every(isFar); }
 function resting(){ if(restKey && restKey !== liveIds()) restKey = ''; return !!restKey; }
+/* 車來了（使用者要求省呼叫次數）：長輩上車後按一下畫面就停，沿用「車太遠暫停」的 restKey。畫面一直開著也不再查。
+   離開畫面 30 分鐘（BACK）以上再回來才自動接回，否則隔天打開還停著；提醒一併關掉，否則會無聲失效。 */
+function stopNow(){
+  if(alarmId) setAlarm(null);
+  clearTimeout(pollT); pollT = null;
+  restKey = liveIds(); restAt = Date.now(); restDone = true;
+  toast('已停止更新，不會再查詢'); drawCards();
+}
 function restTime(){ var d = new Date(restAt), n = new Date(Date.now()); return (d.toDateString() === n.toDateString() ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ') + hhmm(d.getHours() * 60 + d.getMinutes()); }
 function seenAt(t){ return tripKey[t.id] === busKey(t) ? tripAt[t.id] : 0; }   // 要看的車換了就算還沒查過
 function fresh(t){ var a = seenAt(t); return a && Date.now() - a < keep; }
@@ -382,7 +390,7 @@ function fresh(t){ var a = seenAt(t); return a && Date.now() - a < keep; }
 function judge(t){
   var walk = (t.walk || 0) * 60;
   if(!live(t)){ var nx = nextWin(t); return {none:true, word:'現在不更新', hint:nx ? '下次更新：' + nx : '這一趟沒有設定更新的日子', cls:''}; }
-  if(resting()) return {none:true, word:'暫停更新', hint:restTime() + ' 查到下一班還要 1 小時以上。要看最新，請按「再看一次」', cls:''};
+  if(resting()) return restDone ? {none:true, word:'已停止更新', hint:'要再看下一班，請按「再看一次」', cls:''} : {none:true, word:'暫停更新', hint:restTime() + ' 查到下一班還要 1 小時以上。要看最新，請按「再看一次」', cls:''};
   if(!fresh(t)){
     var at = seenAt(t);
     return {none:true, word:at ? '暫時查不到' : '查詢中…', hint:at ? '請看站牌，或等一下再看' : '', cls:''};
@@ -497,7 +505,9 @@ function vHome(){
   $('again').onclick = function(){ if(paused()){ toast('現在不是您設定的時間，不會查詢'); return; } toast('查詢中…'); poll(true); };
   $('more').onclick = function(){ F = {}; go('from'); };
   $('cards').addEventListener('click', function(e){
-    var b = e.target.closest('button'); if(!b) return;
+    var b = e.target.closest('button');
+    if(!paused() && !resting() && (b ? b.dataset.a === 'stop' : e.target.closest('.led'))){ stopNow(); return; }
+    if(!b) return;
     var t = trips.filter(function(x){ return x.id === b.dataset.id; })[0]; if(!t) return;
     if(b.dataset.a === 'say') speak(sayTrip(t));
     if(b.dataset.a === 'alarm'){ if(alarmId !== t.id && !live(t)){ toast('現在不是您設定的時間，不能用提醒'); return; } setAlarm(alarmId === t.id ? null : t.id); }
@@ -516,6 +526,7 @@ function drawCards(){
     var on = alarmId === t.id;
     return '<article class="sign"><h2 class="sign-top">' + esc(t.name) + '</h2><div class="led">' + line + big + (j.hint ? '<p class="hint ' + j.cls + '">' + esc(j.hint) + '</p>' : '') + '</div>' +
       '<div class="sign-foot"><p>在「' + esc(t.from) + '」上車' + (t.walk ? '・走路 ' + t.walk + ' 分鐘' : '') + '</p><div class="acts">' +
+      (live(t) && !resting() ? '<button class="btn main" type="button" data-a="stop">🚌 車來了，停止更新</button>' : '') +
       '<button class="btn" type="button" data-a="say" data-id="' + esc(t.id) + '">🔊 唸給我聽</button>' +
       '<button class="btn' + (on ? ' on' : '') + '" type="button" data-a="alarm" data-id="' + esc(t.id) + '" aria-pressed="' + on + '">' + (on ? '🔔 等您出門中（按一下取消）' : '🔔 時間到叫我') + '</button></div></div></article>';
   }).join('');
@@ -526,10 +537,10 @@ function drawUpd(){
   if(!etaAt){ u.textContent = trips.length && paused() ? '現在不是您設定的時間，不會查詢' : ''; return; }
   var s = Math.round((Date.now() - etaAt) / 1000), m = s < 10 ? '剛剛更新' : s < 60 ? s + ' 秒前更新' : Math.floor(s / 60) + ' 分鐘前更新';
   var old = false; if(tpAt){ var d = new Date(tpAt.replace(/\//g, '-').replace(' ', 'T') + '+08:00'); old = etaAt - d.getTime() > 300000; }
-  u.textContent = m + (paused() ? '・現在不是您設定的時間，不會查詢' : resting() ? '・車還很遠，已暫停自動更新' : '・會自動更新') + (old ? '・資料來源可能延遲' : '');
+  u.textContent = m + (paused() ? '・現在不是您設定的時間，不會查詢' : resting() ? (restDone ? '・已停止更新' : '・車還很遠，已暫停自動更新') : '・會自動更新') + (old ? '・資料來源可能延遲' : '');
 }
 setInterval(function(){ if(currentView() === 'home'){ drawUpd(); if(trips.some(function(t){ return tripAt[t.id] && !fresh(t); })) drawCards(); endAlarm(); var k = liveIds(), dn = new Date(Date.now()).getDate(); if(dn !== drawnDay){ drawnDay = dn; drawCards(); } if(!k && k !== liveKey){ liveKey = k; drawCards(); } if(k && !fetching && !document.hidden && (!pollT || k !== liveKey)) poll(); } }, 5000);
-document.addEventListener('visibilitychange', function(){ if(!document.hidden && currentView() === 'home') poll(); });
+document.addEventListener('visibilitychange', function(){ if(!document.hidden && currentView() === 'home'){ if(restKey && restDone && Date.now() - restAt > BACK) restKey = ''; poll(); } });
 
 function demo(){
   toast('準備範例中…');
