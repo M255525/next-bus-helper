@@ -1,5 +1,5 @@
 // 僅供「加入主畫面」安裝需求使用：network-first + 同源快取備援，不快取跨網域請求（到站時間一律即時查）。
-const CACHE_NAME = 'next-bus-helper-shell-v12';
+const CACHE_NAME = 'next-bus-helper-shell-v13';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -20,7 +20,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME && k.indexOf(CACHE_NAME.replace(/\d+$/, '')) === 0).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
